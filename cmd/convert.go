@@ -18,24 +18,24 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
-  "fmt"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/kubernetes/scheme"
-  
-  corev1 "k8s.io/api/core/v1"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 // convertCmd represents the convert command
 var convertCmd = &cobra.Command{
-	Use:   "convert",
-	Short: "Converts a kubernetes Secret file to a SopsSecret.",
-	Long: ``,
-  DisableFlagParsing: true,
+	Use:                "convert",
+	Short:              "Converts a kubernetes Secret file to a SopsSecret.",
+	Long:               ``,
+	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return errors.New("Must provide args.")
@@ -73,90 +73,90 @@ var convertCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-    defer tmpfile.Close()
+		defer tmpfile.Close()
 		defer os.Remove(tmpfile.Name())
 
-    tmpSecretData := make(map[string]string)
-    for k, v := range secret.Data {
-      tmpSecretData[k] = string(v)
-    }
+		tmpSecretData := make(map[string]string)
+		for k, v := range secret.Data {
+			tmpSecretData[k] = string(v)
+		}
 
-    secretData, err := yaml.Marshal(tmpSecretData)
-    if err != nil {
-      return err
-    }
+		secretData, err := yaml.Marshal(tmpSecretData)
+		if err != nil {
+			return err
+		}
 
 		bytes.NewReader(secretData).WriteTo(tmpfile)
 		tmpfile.Sync()
 
-    // temp file used to capture sops command output.
+		// temp file used to capture sops command output.
 		sopsOutput, err := ioutil.TempFile("", ".*.yml")
 		if err != nil {
 			return err
 		}
-    defer sopsOutput.Close()
+		defer sopsOutput.Close()
 		defer os.Remove(sopsOutput.Name())
 
 		// Open sops editor directly
-    sopsCommandArgs := append([]string{"--encrypt"}, args[1:]...)
-    sopsCommandArgs = append(sopsCommandArgs, tmpfile.Name())
+		sopsCommandArgs := append([]string{"--encrypt"}, args[1:]...)
+		sopsCommandArgs = append(sopsCommandArgs, tmpfile.Name())
 		sopsCommand := exec.Command("sops", sopsCommandArgs...)
 		sopsCommand.Stdin = os.Stdin
-    sopsCommand.Stdout = sopsOutput
+		sopsCommand.Stdout = sopsOutput
 		sopsCommand.Stderr = os.Stderr
 		err = sopsCommand.Run()
 		if err != nil {
 			return err
 		}
 
-    tmpfileContents, err := ioutil.ReadFile(sopsOutput.Name())
+		tmpfileContents, err := ioutil.ReadFile(sopsOutput.Name())
 		if err != nil {
 			return err
 		}
 
-    // Force zero value to keep things pretty (may be better to del the key instead?)
-    if secret.Type == "" {
-      secret.Type = corev1.SecretTypeOpaque
-    }
+		// Force zero value to keep things pretty (may be better to del the key instead?)
+		if secret.Type == "" {
+			secret.Type = corev1.SecretTypeOpaque
+		}
 
-    sopsSecretTemplate := yaml.MapSlice{
-      yaml.MapItem{
-        Key: "apiVersion",
-        Value: "secrets.dhouti.dev/v1beta1",
-      },
-      yaml.MapItem{
-        Key: "kind",
-        Value: "SopsSecret",
-      },
-      yaml.MapItem{
-        Key: "metadata",
-        Value: yaml.MapSlice{
-          yaml.MapItem{
-            Key: "name",
-            Value: secret.Name,
-          },
-          yaml.MapItem{
-            Key: "namespace",
-            Value: secret.Namespace,
-          },
-        },
-      },
-      yaml.MapItem{
-        Key: "type",
-        Value: secret.Type,
-      },
-      yaml.MapItem{
-        Key: "data",
-        Value: string(tmpfileContents),
-      },
-    }
+		sopsSecretTemplate := yaml.MapSlice{
+			yaml.MapItem{
+				Key:   "apiVersion",
+				Value: "secrets.dhouti.dev/v1beta1",
+			},
+			yaml.MapItem{
+				Key:   "kind",
+				Value: "SopsSecret",
+			},
+			yaml.MapItem{
+				Key: "metadata",
+				Value: yaml.MapSlice{
+					yaml.MapItem{
+						Key:   "name",
+						Value: secret.Name,
+					},
+					yaml.MapItem{
+						Key:   "namespace",
+						Value: secret.Namespace,
+					},
+				},
+			},
+			yaml.MapItem{
+				Key:   "type",
+				Value: secret.Type,
+			},
+			yaml.MapItem{
+				Key:   "data",
+				Value: string(tmpfileContents),
+			},
+		}
 
-    output, err := yaml.Marshal(sopsSecretTemplate)
-    if err != nil {
-      return err
-    }
+		output, err := yaml.Marshal(sopsSecretTemplate)
+		if err != nil {
+			return err
+		}
 
-    fmt.Println(string(output))
+		fmt.Println(string(output))
 
 		return nil
 	},
