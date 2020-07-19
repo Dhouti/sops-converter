@@ -24,8 +24,7 @@ test: generate fmt vet manifests
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=deploy/kustomize/base
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=deploy/helm/charts/sops-converter/templates
-	
+
 # Run go fmt against code
 fmt:
 	go fmt ./...
