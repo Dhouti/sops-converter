@@ -25,3 +25,4 @@ bin
 *~
 aws-creds.yml
 config/**
+deploy/test-*

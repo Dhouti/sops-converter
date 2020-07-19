@@ -18,9 +18,10 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,20 +49,20 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 	obj := &secretsv1beta1.SopsSecret{}
 	err := r.Get(context.TODO(), req.NamespacedName, obj)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, errors.Wrap(err, "failed to get sopssecret object")
 	}
 
 	// Decrypt the Data field using Sops
 	unencryptedData, err := sops.Data([]byte(obj.Data), "yaml")
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, errors.Wrap(err, "failed to decrypt data")
 	}
 
 	// Convert decryted secret into map[string]string, sadly cannot unmarshal directly into []byte
 	secretDataStrings := make(map[string]string)
-	err = json.Unmarshal(unencryptedData, &secretDataStrings)
+	err = yaml.Unmarshal(unencryptedData, &secretDataStrings)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, errors.Wrap(err, "failed to unmarshal decrypted data")
 	}
 
 	// Convert map[string]string to map[string][]byte for compatibility with corev1.Secret
@@ -85,7 +86,7 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 	}
 
 	err = r.Patch(context.TODO(), generatedSecret, client.Apply, []client.PatchOption{client.ForceOwnership, client.FieldOwner("sopsecret-controller")}...)
-	return ctrl.Result{}, err
+	return ctrl.Result{}, errors.Wrap(err, "failed to apply changes to secret")
 }
 
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {

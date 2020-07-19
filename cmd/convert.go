@@ -109,14 +109,10 @@ var convertCmd = &cobra.Command{
 			return err
 		}
 
+		sopsOutput.Sync()
 		tmpfileContents, err := ioutil.ReadFile(sopsOutput.Name())
 		if err != nil {
 			return err
-		}
-
-		// Force zero value to keep things pretty (may be better to del the key instead?)
-		if secret.Type == "" {
-			secret.Type = corev1.SecretTypeOpaque
 		}
 
 		sopsSecretTemplate := yaml.MapSlice{
@@ -151,13 +147,24 @@ var convertCmd = &cobra.Command{
 			},
 		}
 
+		// If type not specified drop the key.
+		// The controller will handle defaulting.
+		if secret.Type == "" {
+			for index, item := range sopsSecretTemplate {
+				keyString, ok := item.Key.(string)
+				if ok && keyString == "type" {
+					sopsSecretTemplate = append(sopsSecretTemplate[:index], sopsSecretTemplate[index+1:]...)
+					break
+				}
+			}
+		}
+
 		output, err := yaml.Marshal(sopsSecretTemplate)
 		if err != nil {
 			return err
 		}
 
 		fmt.Println(string(output))
-
 		return nil
 	},
 }
