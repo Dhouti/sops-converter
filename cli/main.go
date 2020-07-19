@@ -15,7 +15,7 @@ limitations under the License.
 */
 package main
 
-import "github.com/dhouti/sops-converter/cmd"
+import "github.com/dhouti/sops-converter/cli/cmd"
 
 func main() {
 	cmd.Execute()
