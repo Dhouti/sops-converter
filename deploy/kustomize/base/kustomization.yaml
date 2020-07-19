@@ -1,3 +1,5 @@
 resources:
 - secrets.dhouti.dev_sopssecrets.yaml
-- controller.yaml
+- namespace.yaml
+- rbac.yaml
+- deployment.yaml
