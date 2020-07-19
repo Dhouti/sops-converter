@@ -23,6 +23,5 @@ bin
 *.swp
 *.swo
 *~
-aws-creds.yml
-config/**
-deploy/test-*
+
+config

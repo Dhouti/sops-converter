@@ -60,12 +60,9 @@ spec:
       containers:
       - command:
         - /manager
-        image: dhouti/sops-converter:latest
         name: sopssecrets-controller
+        image: dhouti/sops-converter:v0.0.1
         imagePullPolicy: Always
-        envFrom:
-        - secretRef:
-            name: aws-creds
         resources:
           limits:
             cpu: 100m
