@@ -1,0 +1,7 @@
+domain: dhouti.dev
+repo: github.com/dhouti/sops-converter
+resources:
+- group: secrets
+  kind: SopsSecret
+  version: v1beta1
+version: "2"
