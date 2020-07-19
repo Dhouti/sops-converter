@@ -81,6 +81,11 @@ var convertCmd = &cobra.Command{
 			tmpSecretData[k] = string(v)
 		}
 
+		// Merge stringData into Data
+		for k, v := range secret.StringData {
+			tmpSecretData[k] = v
+		}
+
 		secretData, err := yaml.Marshal(tmpSecretData)
 		if err != nil {
 			return err
