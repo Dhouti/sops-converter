@@ -29,8 +29,8 @@ import (
 	secretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
 )
 
-// editorCmd represents the editor command
-var editorCmd = &cobra.Command{
+// editCmd represents the edit command
+var editCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Opens and decrypts a SopsSecret.",
 	Long: `Opens a SopsSecret manifest, decrypts it,
@@ -45,17 +45,26 @@ var editorCmd = &cobra.Command{
 		targetFile, err := ioutil.ReadFile(args[0])
 		if err != nil {
 			if os.IsNotExist(err) {
-				// Do the tempfile creation thing
-				// Exit out as well
+				// Create a new SopsSecret if not exists?
 				return nil
 			}
 			return err
 		}
 
+		// Store the original yaml
+		var originalYaml yaml.MapSlice
+		err = yaml.Unmarshal(targetFile, &originalYaml)
+		if err != nil {
+			return err
+		}
+
+		// Convert manifest to runtime.Object to see if it's a SopsSecret
 		m, _, err := scheme.Codecs.UniversalDeserializer().Decode(targetFile, nil, nil)
 		if err != nil {
 			return err
 		}
+
+		// Assert that object is SopsSecret, if not exit
 		sopsSecret, ok := m.(*secretsv1beta1.SopsSecret)
 		if !ok {
 			return errors.New("file is not a SopsSecret")
@@ -72,6 +81,7 @@ var editorCmd = &cobra.Command{
 		bytes.NewReader([]byte(sopsSecret.Data)).WriteTo(tmpfile)
 		tmpfile.Sync()
 
+		// Open sops editor directly
 		sopsCommand := exec.Command("sops", tmpfile.Name())
 		sopsCommand.Stdin = os.Stdin
 		sopsCommand.Stdout = os.Stdout
@@ -85,14 +95,29 @@ var editorCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		sopsSecret.Data = string(tmpfileContents)
 
-		out, err := yaml.Marshal(sopsSecret)
+		// Fetch file mode so it's not changed on write.
+		finfo, err := os.Stat(args[0])
 		if err != nil {
 			return err
 		}
 
-		err = ioutil.WriteFile(args[0], out, 0644)
+		// Using yaml.MapSlice to preserve key order.
+		for index, item := range originalYaml {
+			keyString, ok := item.Key.(string)
+			if ok && keyString == "data" {
+				item.Value = string(tmpfileContents)
+				originalYaml[index] = item
+				break
+			}
+		}
+
+		out, err := yaml.Marshal(originalYaml)
+		if err != nil {
+			return err
+		}
+
+		err = ioutil.WriteFile(args[0], out, finfo.Mode())
 		if err != nil {
 			return err
 		}
@@ -101,15 +126,15 @@ var editorCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(editorCmd)
+	rootCmd.AddCommand(editCmd)
 
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// editorCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// editCmd.PersistentFlags().String("foo", "", "A help for foo")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// editorCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// editCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

@@ -64,7 +64,7 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		return ctrl.Result{}, err
 	}
 
-	// meh
+	// Convert map[string]string to map[string][]byte for compatibility with corev1.Secret
 	generatedSecretData := make(map[string][]byte)
 	for k, v := range secretDataStrings {
 		generatedSecretData[k] = []byte(v)
@@ -75,12 +75,12 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 			Name:      obj.Name,
 			Namespace: obj.Namespace,
 		},
-		// TypeMeta must be specified for server side apply.
+		// TypeMeta Kind + Version must be specified for server side apply?
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
 			APIVersion: "v1",
 		},
-		Type: corev1.SecretTypeOpaque,
+		Type: obj.Type,
 		Data: generatedSecretData,
 	}
 

@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -36,8 +37,9 @@ type SopsSecret struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Data   string           `json:"data,omitempty"`
-	Status SopsSecretStatus `json:"status,omitempty"`
+	Type   corev1.SecretType `json:"type,omitempty"`
+	Data   string            `json:"data,omitempty"`
+	Status SopsSecretStatus  `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
