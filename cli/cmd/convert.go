@@ -68,13 +68,8 @@ var convertCmd = &cobra.Command{
 			return errors.New("file is not a Secret")
 		}
 
-		// Open a temporary file.
-		tmpfile, err := ioutil.TempFile("", ".*.yml")
-		if err != nil {
-			return err
-		}
-		defer tmpfile.Close()
-		defer os.Remove(tmpfile.Name())
+		// Buffer for sops stdin
+		sopsStdin := &bytes.Buffer{}
 
 		tmpSecretData := make(map[string]string)
 		for k, v := range secret.Data {
@@ -91,19 +86,17 @@ var convertCmd = &cobra.Command{
 			return err
 		}
 
-		bytes.NewReader(secretData).WriteTo(tmpfile)
-		tmpfile.Sync()
+		bytes.NewReader(secretData).WriteTo(sopsStdin)
 
 		// Catch stdout in buffer
 		sopsStdout := &bytes.Buffer{}
 
 		// run sops encrypt directly
-		sopsCommandArgs := append([]string{"--encrypt"}, args[1:]...)
-		sopsCommandArgs = append(sopsCommandArgs, tmpfile.Name())
+		sopsCommandArgs := append([]string{"--encrypt", "--output-type", "yaml"}, args[1:]...)
+		sopsCommandArgs = append(sopsCommandArgs, "/dev/stdin")
 		sopsCommand := exec.Command("sops", sopsCommandArgs...)
-		sopsCommand.Stdin = os.Stdin
+		sopsCommand.Stdin = sopsStdin
 		sopsCommand.Stdout = sopsStdout
-		sopsCommand.Stderr = os.Stderr
 		err = sopsCommand.Run()
 		if err != nil {
 			return err
