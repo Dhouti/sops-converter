@@ -16,6 +16,8 @@ You can clone the repo and `make build`
 The output can be found in `bin/sops-converter`
 
 ```
+A convenience wrapper for working with SopsSecret objects.
+
 Usage:
   sops-converter [command]
 
@@ -25,11 +27,10 @@ Available Commands:
   help        Help about any command
 
 Flags:
-      --config string   config file (default is $HOME/.sops-converter.yaml)
-  -h, --help            help for sops-converter
-  -t, --toggle          Help message for toggle
+  -h, --help   help for sops-converter
 
 Use "sops-converter [command] --help" for more information about a command.
+
 ```
 
 ## Usage-Example
