@@ -47,14 +47,19 @@ stringData:
   superSecretPassword: password123
 ```
 
+NOTE: `data` and `stringData` can both be used.   
+Keys in `stringData` will always take priority over `data`.
+
 Args are passed through to `sops --encrypt`.
 
 ```
 sops-converter convert secret.yaml --kms key:arn:goes:here > output.yaml
 ```
 
-The output of convert can be applied directly to the cluster.
+The output of convert can be applied directly to the cluster.  
 `kubectl apply -f output.yaml`
+It can then be found in `corev1/Secret` form using:
+`kubectl get secret -n sopssecrets test -o yaml`
 
 ### Edit
 
