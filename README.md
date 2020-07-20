@@ -11,6 +11,8 @@ Raw deployment manifests can be found in `deploy/manifests`
 Kustomize base can be found in `deploy/kustomize/base`
 
 # CLI
+All functionality is dependant on the `sops` binary being present in `$PATH`.
+
 Binaries are not packaged and released for now.
 You can clone the repo and `make build`  
 The output can be found in `bin/sops-converter`
