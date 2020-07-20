@@ -94,28 +94,17 @@ var convertCmd = &cobra.Command{
 		bytes.NewReader(secretData).WriteTo(tmpfile)
 		tmpfile.Sync()
 
-		// temp file used to capture sops command output.
-		sopsOutput, err := ioutil.TempFile("", ".*.yml")
-		if err != nil {
-			return err
-		}
-		defer sopsOutput.Close()
-		defer os.Remove(sopsOutput.Name())
+		// Catch stdout in buffer
+		sopsStdout := &bytes.Buffer{}
 
-		// Open sops editor directly
+		// run sops encrypt directly
 		sopsCommandArgs := append([]string{"--encrypt"}, args[1:]...)
 		sopsCommandArgs = append(sopsCommandArgs, tmpfile.Name())
 		sopsCommand := exec.Command("sops", sopsCommandArgs...)
 		sopsCommand.Stdin = os.Stdin
-		sopsCommand.Stdout = sopsOutput
+		sopsCommand.Stdout = sopsStdout
 		sopsCommand.Stderr = os.Stderr
 		err = sopsCommand.Run()
-		if err != nil {
-			return err
-		}
-
-		sopsOutput.Sync()
-		tmpfileContents, err := ioutil.ReadFile(sopsOutput.Name())
 		if err != nil {
 			return err
 		}
@@ -148,7 +137,7 @@ var convertCmd = &cobra.Command{
 			},
 			yaml.MapItem{
 				Key:   "data",
-				Value: string(tmpfileContents),
+				Value: string(sopsStdout.Bytes()),
 			},
 		}
 
