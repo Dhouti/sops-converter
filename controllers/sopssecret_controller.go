@@ -20,7 +20,6 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,26 +42,29 @@ type SopsSecretReconciler struct {
 // +kubebuilder:rbac:groups=secrets.dhouti.dev,resources=sopssecrets/status,verbs=get;update;patch
 
 func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	_ = context.Background()
-	_ = r.Log.WithValues("sopssecret", req.NamespacedName)
+	ctx := context.Background()
+	log := r.Log.WithValues("sopssecret", req.NamespacedName)
 
 	obj := &secretsv1beta1.SopsSecret{}
-	err := r.Get(context.TODO(), req.NamespacedName, obj)
+	err := r.Get(ctx, req.NamespacedName, obj)
 	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to get sopssecret object")
+		log.Error(err, "failed to get sopssecret object")
+		return ctrl.Result{}, err
 	}
 
 	// Decrypt the Data field using Sops
 	unencryptedData, err := sops.Data([]byte(obj.Data), "yaml")
 	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to decrypt data")
+		log.Error(err, "failed to decrypt data")
+		return ctrl.Result{}, err
 	}
 
 	// Convert decryted secret into map[string]string, sadly cannot unmarshal directly into []byte
 	secretDataStrings := make(map[string]string)
 	err = yaml.Unmarshal(unencryptedData, &secretDataStrings)
 	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to unmarshal decrypted data")
+		log.Error(err, "failed to unmarshal decrypted data")
+		return ctrl.Result{}, err
 	}
 
 	// Convert map[string]string to map[string][]byte for compatibility with corev1.Secret
@@ -85,8 +87,11 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		Data: generatedSecretData,
 	}
 
-	err = r.Patch(context.TODO(), generatedSecret, client.Apply, []client.PatchOption{client.ForceOwnership, client.FieldOwner("sopsecret-controller")}...)
-	return ctrl.Result{}, errors.Wrap(err, "failed to apply changes to secret")
+	err = r.Patch(ctx, generatedSecret, client.Apply, []client.PatchOption{client.ForceOwnership, client.FieldOwner("sopsecret-controller")}...)
+	if err != nil {
+		log.Error(err, "failed to apply changes to secret")
+	}
+	return ctrl.Result{}, err
 }
 
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
