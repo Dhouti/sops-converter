@@ -18,6 +18,9 @@ package controllers
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
@@ -28,8 +31,12 @@ import (
 	secretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
 	sops "go.mozilla.org/sops/v3/decrypt"
 	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const secretChecksumAnotation = "secrets.dhouti.dev/secretChecksum"
+const sopsChecksumAnnotation = "secrets.dhouti.dev/sopsChecksum"
 
 // SopsSecretReconciler reconciles a SopsSecret object
 type SopsSecretReconciler struct {
@@ -50,6 +57,31 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 	if err != nil {
 		log.Error(err, "failed to get sopssecret object")
 		return ctrl.Result{}, err
+	}
+
+	fetchSecret := &corev1.Secret{}
+	err = r.Get(ctx, req.NamespacedName, fetchSecret)
+	if err != nil {
+		if !kerrors.IsNotFound(err) {
+			log.Error(err, "failed to get secret object")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Calculate hashes of both objects to see if they are in desired state.
+	secretDataBytes, err := json.Marshal(fetchSecret.Data)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	currentSecretChecksum := hashItem(secretDataBytes)
+	currentSopsChecksum := hashItem([]byte(obj.Data))
+
+	existingSecretChecksum, hasSecretChecksum := fetchSecret.Annotations[secretChecksumAnotation]
+	existingSopsChecksum, hasSopsChecksum := fetchSecret.Annotations[sopsChecksumAnnotation]
+	if hasSecretChecksum && hasSopsChecksum && existingSecretChecksum == currentSecretChecksum && existingSopsChecksum == currentSopsChecksum {
+		log.Info("Checksums matched, skipping.")
+		return ctrl.Result{}, nil
 	}
 
 	// Decrypt the Data field using Sops
@@ -77,6 +109,10 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      obj.Name,
 			Namespace: obj.Namespace,
+			Annotations: map[string]string{
+				secretChecksumAnotation: currentSecretChecksum,
+				sopsChecksumAnnotation:  currentSopsChecksum,
+			},
 		},
 		// TypeMeta Kind + Version must be specified for server side apply?
 		TypeMeta: metav1.TypeMeta{
@@ -96,4 +132,10 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).For(&secretsv1beta1.SopsSecret{}).Owns(&corev1.Secret{}).Complete(r)
+}
+
+func hashItem(data []byte) string {
+	hash := sha1.Sum(data)
+	encodedHash := hex.EncodeToString(hash[:])
+	return encodedHash
 }
