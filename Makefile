@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= dhouti/sops-converter:v0.0.1
+IMG ?= dhouti/sops-converter:v0.0.2
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
@@ -11,9 +11,9 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: fmt vet manifests
+all: fmt vet generate manifests
 
-build: fmt vet
+build: generate manifests fmt vet
 	go build -o bin/sops-converter github.com/dhouti/sops-converter/cli
 	go build -o bin/controller github.com/dhouti/sops-converter
 
