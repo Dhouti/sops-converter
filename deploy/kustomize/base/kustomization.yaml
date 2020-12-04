@@ -1,4 +1,4 @@
 resources:
 - secrets.dhouti.dev_sopssecrets.yaml
 - rbac.yaml
-- deployment.yaml
+- statefulset.yaml
