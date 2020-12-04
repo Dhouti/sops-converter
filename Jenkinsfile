@@ -23,23 +23,22 @@ spec:
     }
   }
 
-    stages {
-      stage('Run tests') {
-        steps {
-          container(name: 'sops-converter-builder', shell: '/bin/bash') {
-            sh '''
-              go test ./... -coverprofile cover.out
-            '''
-          }
+  stages {
+    stage('Run tests') {
+      steps {
+        container(name: 'sops-converter-builder', shell: '/bin/bash') {
+          sh '''
+            go test ./... -coverprofile cover.out
+          '''
         }
       }
-      stage('Build') {
-        steps {
-          container(name: 'kaniko', shell: '/bin/bash') {
-            sh '''
-              /kaniko/executor --dockerfile . --destination docker.dhouti.dev/sops-converter:jenkins-test
-            '''
-          }
+    }
+    stage('Build') {
+      steps {
+        container(name: 'kaniko', shell: '/bin/bash') {
+          sh '''
+            /kaniko/executor --dockerfile . --destination docker.dhouti.dev/sops-converter:jenkins-test
+          '''
         }
       }
     }
