@@ -49,5 +49,16 @@ spec:
         }
       }
     }
+
+    stage('Build Release Tag') {
+      when {
+        buildingTag()
+      }
+      container(name: 'kaniko', shell: '/busybox/sh') {
+        sh '''
+          /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${TAG_NAME}
+        '''
+      }
+    }
   }
 }
