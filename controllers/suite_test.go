@@ -17,6 +17,7 @@ limitations under the License.
 package controllers_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -85,6 +86,7 @@ var _ = BeforeSuite(func(done Done) {
 
 	go func() {
 		err = k8sManager.Start(ctrl.SetupSignalHandler())
+		fmt.Printf("????%#v\n", err.Error())
 		Expect(err).ToNot(HaveOccurred())
 	}()
 

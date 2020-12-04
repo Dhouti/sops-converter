@@ -32,7 +32,6 @@ spec:
       steps {
         container(name: 'sops-converter-builder', shell: '/bin/bash') {
         sh '''
-            export PATH=$PATH:/usr/local/kubebuilder/bin
             make test
           '''
         }
