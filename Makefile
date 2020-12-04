@@ -18,7 +18,7 @@ build: generate manifests fmt vet
 	go build -o bin/controller github.com/dhouti/sops-converter
 
 # Run tests
-test: generate fmt vet manifests
+test: generate fmt vet manifests mocks
 	go test ./... -coverprofile cover.out
 
 # Generate manifests e.g. CRD, RBAC etc.
