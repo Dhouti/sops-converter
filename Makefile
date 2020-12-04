@@ -11,7 +11,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: fmt vet generate manifests
+all: fmt vet generate manifests mocks
 
 build: generate manifests fmt vet
 	go build -o bin/sops-converter github.com/dhouti/sops-converter/cli
