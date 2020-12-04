@@ -28,20 +28,23 @@ spec:
   }
 
   stages {
-    //stage('Run tests') {
-    //  steps {
-    //    container(name: 'sops-converter-builder', shell: '/bin/bash') {
-    //    sh '''
-    //        make test
-    //      '''
-    //    }
-    //  }
-    //}
+    stage('Run tests') {
+      steps {
+        container(name: 'sops-converter-builder', shell: '/bin/bash') {
+        sh '''
+            make test
+          '''
+        }
+      }
+    }
     stage('Build Master') {
+      when {
+        branch 'master'
+      }
       steps {
         container(name: 'kaniko', shell: '/busybox/sh') {
           sh '''
-            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:$(git rev-parse --short HEAD)
+            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7}
           '''
         }
       }
