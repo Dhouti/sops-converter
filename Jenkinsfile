@@ -28,7 +28,7 @@ spec:
       steps {
         container(name: 'sops-converter-builder', shell: '/bin/bash') {
           sh '''
-            go test ./... -coverprofile cover.out
+            make test
           '''
         }
       }
