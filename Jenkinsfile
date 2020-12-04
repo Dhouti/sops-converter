@@ -6,11 +6,11 @@ pipeline {
     kubernetes {
     }
   }
-  stages {
-    podTemplate(containers: [
-        containerTemplate(name: 'sops-converter-builder', image: 'docker.dhouti.dev/sops-converter-builder:v0.0.1', ttyEnabled: true, command: 'cat'),
-        containerTemplate(name: 'kaniko', image: 'gcr.io/kaniko-project/executor:v1.3.0', ttyEnabled: true, command: 'cat')
-    ]) {
+  podTemplate(containers: [
+      containerTemplate(name: 'sops-converter-builder', image: 'docker.dhouti.dev/sops-converter-builder:v0.0.1', ttyEnabled: true, command: 'cat'),
+      containerTemplate(name: 'kaniko', image: 'gcr.io/kaniko-project/executor:v1.3.0', ttyEnabled: true, command: 'cat')
+  ]) {
+    stages {
       node(POD_LABEL) {
         stage('Run tests') {
           steps {
