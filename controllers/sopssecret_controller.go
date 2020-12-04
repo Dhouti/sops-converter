@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	secretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
 	sops "go.mozilla.org/sops/v3/decrypt"
@@ -38,17 +39,42 @@ import (
 const secretChecksumAnotation = "secrets.dhouti.dev/secretChecksum"
 const sopsChecksumAnnotation = "secrets.dhouti.dev/sopsChecksum"
 
+var _ Decryptor = &SopsDecrytor{}
+
+//go:generate moq -out mocks/decryptor_mock.go -pkg controllers_mocks . Decryptor
+type Decryptor interface {
+	Decrypt([]byte, string) ([]byte, error)
+}
+
 // SopsSecretReconciler reconciles a SopsSecret object
 type SopsSecretReconciler struct {
 	client.Client
 	Log    logr.Logger
 	Scheme *runtime.Scheme
+	Decryptor
 }
 
-// +kubebuilder:rbac:groups=secrets.dhouti.dev,resources=sopssecrets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=secrets.dhouti.dev,resources=sopssecrets/status,verbs=get;update;patch
+type SopsDecrytor struct {
+}
+
+func (d *SopsDecrytor) Decrypt(input []byte, outFormat string) ([]byte, error) {
+	return sops.Data(input, outFormat)
+}
+
+func (r *SopsSecretReconciler) InjectDecryptor(d Decryptor) {
+	r.Decryptor = d
+}
+
+// +kubebuilder:rbac:groups=secrets.dhouti.dev,resources=sopssecrets,verbs="*"
+// +kubebuilder:rbac:groups=secrets.dhouti.dev,resources=sopssecrets/status,verbs="*"
+// +kubebuilder:rbac:groups="",resources=secrets,verbs="*"
 
 func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+	// If not otherwise defined, default to the real decrypt func.
+	if r.Decryptor == nil {
+		realDecryptor := &SopsDecrytor{}
+		r.Decryptor = realDecryptor
+	}
 	ctx := context.Background()
 	log := r.Log.WithValues("sopssecret", req.NamespacedName)
 
@@ -79,13 +105,13 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 
 	existingSecretChecksum, hasSecretChecksum := fetchSecret.Annotations[secretChecksumAnotation]
 	existingSopsChecksum, hasSopsChecksum := fetchSecret.Annotations[sopsChecksumAnnotation]
-	if hasSecretChecksum && hasSopsChecksum && existingSecretChecksum == currentSecretChecksum && existingSopsChecksum == currentSopsChecksum {
+	if (hasSecretChecksum && hasSopsChecksum) && existingSecretChecksum == currentSecretChecksum && existingSopsChecksum == currentSopsChecksum {
 		log.Info("Checksums matched, skipping.")
 		return ctrl.Result{}, nil
 	}
 
 	// Decrypt the Data field using Sops
-	unencryptedData, err := sops.Data([]byte(obj.Data), "yaml")
+	unencryptedData, err := r.Decrypt([]byte(obj.Data), "yaml")
 	if err != nil {
 		log.Error(err, "failed to decrypt data")
 		return ctrl.Result{}, err
@@ -105,6 +131,14 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		generatedSecretData[k] = []byte(v)
 	}
 
+	// Duplicating this calms a flaky test and prevents an unnecessary reconcile on new objects
+	secretDataBytes, err = json.Marshal(generatedSecretData)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	currentSecretChecksum = hashItem(secretDataBytes)
+
 	generatedSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      obj.Name,
@@ -123,10 +157,17 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		Data: generatedSecretData,
 	}
 
+	err = controllerutil.SetControllerReference(obj, generatedSecret, r.Scheme)
+	if err != nil {
+		log.Error(err, "failed to set controller reference")
+		return ctrl.Result{}, err
+	}
+
 	err = r.Patch(ctx, generatedSecret, client.Apply, []client.PatchOption{client.ForceOwnership, client.FieldOwner("sopsecret-controller")}...)
 	if err != nil {
 		log.Error(err, "failed to apply changes to secret")
 	}
+
 	return ctrl.Result{}, err
 }
 

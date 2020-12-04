@@ -11,19 +11,19 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: fmt vet generate manifests
+all: fmt vet generate manifests mocks
 
 build: generate manifests fmt vet
 	go build -o bin/sops-converter github.com/dhouti/sops-converter/cli
 	go build -o bin/controller github.com/dhouti/sops-converter
 
 # Run tests
-test: generate fmt vet manifests
+test: generate mocks manifests fmt vet
 	go test ./... -coverprofile cover.out
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=deploy/kustomize/base
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..."
 
 # Run go fmt against code
 fmt:
@@ -36,6 +36,10 @@ vet:
 # Generate code
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+mocks:
+	go get github.com/matryer/moq
+	go generate controllers/sopssecret_controller.go
 
 # Build the docker image
 docker-build:
