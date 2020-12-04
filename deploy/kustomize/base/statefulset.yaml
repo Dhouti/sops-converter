@@ -8,6 +8,7 @@ metadata:
   labels:
     control-plane: sops-converter-controller
 spec:
+  serviceName: sops-converter-controller
   selector:
     matchLabels:
       control-plane: sops-converter-controller
@@ -16,6 +17,10 @@ spec:
       labels:
         control-plane: sops-converter-controller
     spec:
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
       serviceAccountName: sops-converter-controller
       containers:
       - command:
