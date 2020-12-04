@@ -37,11 +37,11 @@ spec:
     //    }
     //  }
     //}
-    stage('Build') {
+    stage('Build Master') {
       steps {
         container(name: 'kaniko', shell: '/busybox/sh') {
           sh '''
-            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:jenkins-test
+            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:$(git rev-parse --short HEAD)
           '''
         }
       }
