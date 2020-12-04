@@ -14,7 +14,7 @@ COPY main.go main.go
 COPY api/ api/
 COPY controllers/ controllers/
 COPY Makefile Makefile
-COPY hack/
+COPY hack/ hack/
 
 # Build
 RUN make generate
