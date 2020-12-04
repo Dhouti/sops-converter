@@ -36,6 +36,8 @@ vet:
 # Generate code
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+mocks:
 	go get github.com/matryer/moq
 	go generate controllers/sopssecret_controller.go
 
