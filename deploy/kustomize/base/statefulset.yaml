@@ -1,0 +1,33 @@
+# This is a statefulset only because it prevents multiple replicas running at once
+# While also not having the needlessly complex (in this scenario) leader election.
+apiVersion: apps/v1
+kind: Statefulset
+metadata:
+  name: sops-converter-controller
+  namespace: sops-converter
+  labels:
+    control-plane: sops-converter-controller
+spec:
+  selector:
+    matchLabels:
+      control-plane: sops-converter-controller
+  template:
+    metadata:
+      labels:
+        control-plane: sops-converter-controller
+    spec:
+      serviceAccountName: sops-converter-controller
+      containers:
+      - command:
+        - /manager
+        name: sops-converter-controller
+        image: dhouti/sops-converter:v0.0.2
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 100m
+            memory: 30Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+      terminationGracePeriodSeconds: 10
