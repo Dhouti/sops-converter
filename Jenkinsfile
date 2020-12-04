@@ -28,15 +28,15 @@ spec:
   }
 
   stages {
-    #stage('Run tests') {
-    #  steps {
-    #    container(name: 'sops-converter-builder', shell: '/bin/bash') {
-    #    sh '''
-    #        make test
-    #      '''
-    #    }
-    #  }
-    #}
+    //stage('Run tests') {
+    //  steps {
+    //    container(name: 'sops-converter-builder', shell: '/bin/bash') {
+    //    sh '''
+    //        make test
+    //      '''
+    //    }
+    //  }
+    //}
     stage('Build') {
       steps {
         container(name: 'kaniko', shell: '/busybox/sh') {
