@@ -14,6 +14,10 @@ spec:
     command:
     - cat
     tty: true
+    resources:
+      requests:
+        cpu: 1
+        memory: 750Mi
   - name: kaniko
     image: gcr.io/kaniko-project/executor:v1.3.0-debug
     command:
