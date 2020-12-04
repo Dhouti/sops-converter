@@ -54,10 +54,12 @@ spec:
       when {
         buildingTag()
       }
-      container(name: 'kaniko', shell: '/busybox/sh') {
-        sh '''
-          /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${TAG_NAME}
-        '''
+      steps {
+        container(name: 'kaniko', shell: '/busybox/sh') {
+          sh '''
+            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${TAG_NAME}
+          '''
+        }
       }
     }
   }
