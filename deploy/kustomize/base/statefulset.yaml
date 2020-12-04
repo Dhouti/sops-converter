@@ -1,7 +1,7 @@
 # This is a statefulset only because it prevents multiple replicas running at once
 # While also not having the needlessly complex (in this scenario) leader election.
 apiVersion: apps/v1
-kind: Statefulset
+kind: StatefulSet
 metadata:
   name: sops-converter-controller
   namespace: sops-converter
