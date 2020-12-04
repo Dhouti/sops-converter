@@ -114,10 +114,6 @@ var _ = Describe("sopssecret controller", func() {
 			err := k8sClient.Create(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
 
-			Eventually(func() int {
-				return len(mockedDecrytor.DecryptCalls())
-			}, maxTimeout).Should(Equal(1))
-
 			createdSecretKey := getNamespacedName()
 			createdSecret := &corev1.Secret{}
 			Eventually(func() error {
@@ -146,10 +142,6 @@ var _ = Describe("sopssecret controller", func() {
 			err := k8sClient.Create(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
 
-			Eventually(func() int {
-				return len(mockedDecrytor.DecryptCalls())
-			}, maxTimeout).Should(Equal(1))
-
 			createdSecretKey := getNamespacedName()
 			createdSecret := &corev1.Secret{}
 			Eventually(func() error {
@@ -167,6 +159,10 @@ var _ = Describe("sopssecret controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 				return createdSecret.Data["secret"]
 			}, maxTimeout).Should(Equal([]byte("test")))
+
+			Eventually(func() int {
+				return len(mockedDecrytor.DecryptCalls())
+			}, maxTimeout).Should(Equal(2))
 		})
 
 		It("restores the secret when it is updated", func() {
@@ -176,10 +172,6 @@ var _ = Describe("sopssecret controller", func() {
 			err := k8sClient.Create(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
 
-			Eventually(func() int {
-				return len(mockedDecrytor.DecryptCalls())
-			}, maxTimeout).Should(Equal(1))
-
 			createdSecretKey := getNamespacedName()
 			createdSecret := &corev1.Secret{}
 			Eventually(func() error {
@@ -188,7 +180,17 @@ var _ = Describe("sopssecret controller", func() {
 
 			Expect(createdSecret.Data["secret"]).To(Equal([]byte("update")))
 
-			createdSecret.Data["secret"] = []byte("askdjflk")
+			createdSecret.Data["new"] = []byte("asdfd")
+			err = k8sClient.Update(ctx, createdSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() []byte {
+				err = k8sClient.Get(ctx, createdSecretKey, createdSecret)
+				Expect(err).ToNot(HaveOccurred())
+				return createdSecret.Data["new"]
+			}, maxTimeout).Should(BeNil())
+
+			createdSecret.Data["secret"] = []byte("sadfasdf")
 			err = k8sClient.Update(ctx, createdSecret)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -197,6 +199,10 @@ var _ = Describe("sopssecret controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 				return createdSecret.Data["secret"]
 			}, maxTimeout).Should(Equal([]byte("update")))
+
+			Eventually(func() int {
+				return len(mockedDecrytor.DecryptCalls())
+			}, maxTimeout).Should(Equal(3))
 		})
 	})
 })

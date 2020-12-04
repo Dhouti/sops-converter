@@ -105,7 +105,7 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 
 	existingSecretChecksum, hasSecretChecksum := fetchSecret.Annotations[secretChecksumAnotation]
 	existingSopsChecksum, hasSopsChecksum := fetchSecret.Annotations[sopsChecksumAnnotation]
-	if (hasSecretChecksum && hasSopsChecksum) && existingSecretChecksum == currentSecretChecksum && existingSopsChecksum == currentSopsChecksum {
+	if (hasSecretChecksum && hasSopsChecksum) && (existingSecretChecksum == currentSecretChecksum) && (existingSopsChecksum == currentSopsChecksum) {
 		log.Info("Checksums matched, skipping.")
 		return ctrl.Result{}, nil
 	}
@@ -143,27 +143,20 @@ func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      obj.Name,
 			Namespace: obj.Namespace,
-			Annotations: map[string]string{
-				secretChecksumAnotation: currentSecretChecksum,
-				sopsChecksumAnnotation:  currentSopsChecksum,
-			},
 		},
-		// TypeMeta Kind + Version must be specified for server side apply?
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
-		},
-		Type: obj.Type,
-		Data: generatedSecretData,
 	}
 
-	err = controllerutil.SetControllerReference(obj, generatedSecret, r.Scheme)
-	if err != nil {
-		log.Error(err, "failed to set controller reference")
-		return ctrl.Result{}, err
-	}
+	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, generatedSecret, func() error {
+		generatedSecret.Annotations = map[string]string{
+			secretChecksumAnotation: currentSecretChecksum,
+			sopsChecksumAnnotation:  currentSopsChecksum,
+		}
+		generatedSecret.Data = generatedSecretData
 
-	err = r.Patch(ctx, generatedSecret, client.Apply, []client.PatchOption{client.ForceOwnership, client.FieldOwner("sopsecret-controller")}...)
+		generatedSecret.Type = obj.Type
+		return controllerutil.SetControllerReference(obj, generatedSecret, r.Scheme)
+	})
+
 	if err != nil {
 		log.Error(err, "failed to apply changes to secret")
 	}
