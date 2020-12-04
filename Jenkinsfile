@@ -15,9 +15,9 @@ spec:
     - cat
     tty: true
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:v1.3.0
+    image: gcr.io/kaniko-project/executor:v1.3.0-debug
     command:
-    - cat
+    - /busybox/cat
     tty: true
 """
     }
@@ -35,7 +35,7 @@ spec:
     }
     stage('Build') {
       steps {
-        container(name: 'kaniko', shell: '/bin/bash') {
+        container(name: 'kaniko', shell: '/busybox/sh') {
           sh '''
             /kaniko/executor --dockerfile . --destination docker.dhouti.dev/sops-converter:jenkins-test
           '''
