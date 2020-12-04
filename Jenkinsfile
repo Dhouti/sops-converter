@@ -41,7 +41,7 @@ spec:
       steps {
         container(name: 'kaniko', shell: '/busybox/sh') {
           sh '''
-            /kaniko/executor --context "dir:///${pwd}" --destination docker.dhouti.dev/sops-converter:jenkins-test
+            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:jenkins-test
           '''
         }
       }
