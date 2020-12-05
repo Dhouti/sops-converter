@@ -26,7 +26,7 @@ spec:
       - command:
         - /manager
         name: sops-converter-controller
-        image: dhouti/sops-converter:v0.0.2
+        image: dhouti/sops-converter:v0.1.0
         imagePullPolicy: Always
         resources:
           limits:
