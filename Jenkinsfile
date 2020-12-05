@@ -54,7 +54,7 @@ spec:
       steps {
         container(name: 'kaniko', shell: '/busybox/sh') {
           sh '''
-            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7} --destination dhouti/sops-converter:${GIT_COMMIT:0:7}
+            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7}
           '''
         }
       }
@@ -67,7 +67,7 @@ spec:
       steps {
         container(name: 'kaniko', shell: '/busybox/sh') {
           sh '''
-            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${TAG_NAME}
+            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${TAG_NAME} --destination dhouti/sops-converter:${TAG_NAME}
           '''
         }
       }
