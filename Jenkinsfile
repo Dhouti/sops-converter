@@ -1,6 +1,7 @@
 pipeline {
   triggers {
       githubPush()
+      gitHubTagDiscovery()
   }
   agent {
     kubernetes {
