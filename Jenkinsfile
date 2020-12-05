@@ -1,7 +1,6 @@
 pipeline {
   triggers {
       githubPush()
-      gitHubTagDiscovery()
   }
   agent {
     kubernetes {
@@ -56,19 +55,6 @@ spec:
         container(name: 'kaniko', shell: '/busybox/sh') {
           sh '''
             /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7}
-          '''
-        }
-      }
-    }
-
-    stage('Build Release Tag') {
-      when {
-        buildingTag()
-      }
-      steps {
-        container(name: 'kaniko', shell: '/busybox/sh') {
-          sh '''
-            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${TAG_NAME} --destination dhouti/sops-converter:${TAG_NAME}
           '''
         }
       }
