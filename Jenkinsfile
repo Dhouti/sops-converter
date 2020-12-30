@@ -20,8 +20,6 @@ spec:
         memory: 750Mi
   - name: dind
     image: docker.dhouti.dev/dind-buildx:v0.0.1
-    command:
-    - cat
     tty: true
     securityContext:
       privileged: true
