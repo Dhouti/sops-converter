@@ -30,15 +30,15 @@ spec:
   }
 
   stages {
-    #stage('Run tests') {
-    #  steps {
-    #    container(name: 'sops-converter-builder', shell: '/bin/bash') {
-    #    sh '''
-    #        make test
-    #      '''
-    #    }
-    #  }
-    #}
+    //stage('Run tests') {
+    //  steps {
+    //    container(name: 'sops-converter-builder', shell: '/bin/bash') {
+    //    sh '''
+    //        make test
+    //      '''
+    //    }
+    //  }
+    //}
     stage('Build Master') {
       steps {
         container(name: 'dind', shell: '/bin/sh') {
