@@ -28,16 +28,16 @@ spec:
   }
 
   stages {
-    //stage('Run tests') {
-    //  steps {
-    //    container(name: 'sops-converter-builder', shell: '/bin/bash') {
-    //    sh '''
-    //        make test
-    //      '''
-    //    }
-    //  }
-    //}
-    stage('Build Master') {
+    stage('Run tests') {
+      steps {
+        container(name: 'sops-converter-builder', shell: '/bin/bash') {
+        sh '''
+            make test
+          '''
+        }
+      }
+    }
+    stage('Build Image') {
       steps {
         container(name: 'dind', shell: '/bin/sh') {
         sh '''
