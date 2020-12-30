@@ -8,13 +8,6 @@ pipeline {
 apiVersion: v1
 kind: Pod
 spec:
-  volumes:
-    - name: dockerhub-auth
-      secret:
-        secretName: dockerhub-auth
-        items:
-          - key: .dockerconfigjson
-            path: config.json
   containers:
   - name: sops-converter-builder
     image: docker.dhouti.dev/sops-converter-builder:v0.0.1
@@ -25,14 +18,11 @@ spec:
       requests:
         cpu: 1
         memory: 750Mi
-  - name: kaniko
-    volumeMounts:
-    - name: dockerhub-auth
-      mountPath: /kaniko/.docker
-    image: gcr.io/kaniko-project/executor:v1.3.0-debug
-    command:
-    - /busybox/cat
+  - name: dind
+    image: docker.dhouti.dev/dind-buildx:v0.0.1
     tty: true
+    securityContext:
+      privileged: true
 """
     }
   }
@@ -47,14 +37,12 @@ spec:
         }
       }
     }
-    stage('Build Master') {
-      when {
-        branch 'master'
-      }
+    stage('Build Image') {
       steps {
-        container(name: 'kaniko', shell: '/busybox/sh') {
-          sh '''
-            /kaniko/executor --context "dir:///$(pwd)" --destination docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7}
+        container(name: 'dind', shell: '/bin/sh') {
+        sh '''
+            docker buildx create --use
+            docker buildx build --platform linux/amd64,linux/arm64 -t docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7} . --push
           '''
         }
       }
