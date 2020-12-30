@@ -40,7 +40,8 @@ spec:
     stage('Build Master') {
       steps {
         container(name: 'dind', shell: '/bin/sh') {
-          sh '''
+        sh '''
+            docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
             docker buildx create --use --name mybuild node-amd64
             docker buildx create --append --name mybuild node-arm64
             docker buildx build --platform linux/amd64,linux/arm64 -t docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7} .
