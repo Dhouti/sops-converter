@@ -42,7 +42,7 @@ spec:
         container(name: 'dind', shell: '/bin/sh') {
         sh '''
             docker buildx create --use
-            docker buildx build --platform linux/amd64,linux/arm64 -t docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7} . --push
+            docker buildx build --memory=1g --platform linux/amd64,linux/arm64 -t docker.dhouti.dev/sops-converter:${GIT_COMMIT:0:7} . --push
           '''
         }
       }
