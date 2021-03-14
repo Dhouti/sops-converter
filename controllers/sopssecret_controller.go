@@ -69,13 +69,12 @@ func (r *SopsSecretReconciler) InjectDecryptor(d Decryptor) {
 // +kubebuilder:rbac:groups=secrets.dhouti.dev,resources=sopssecrets/status,verbs="*"
 // +kubebuilder:rbac:groups="",resources=secrets,verbs="*"
 
-func (r *SopsSecretReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// If not otherwise defined, default to the real decrypt func.
 	if r.Decryptor == nil {
 		realDecryptor := &SopsDecrytor{}
 		r.Decryptor = realDecryptor
 	}
-	ctx := context.Background()
 	log := r.Log.WithValues("sopssecret", req.NamespacedName)
 
 	obj := &secretsv1beta1.SopsSecret{}

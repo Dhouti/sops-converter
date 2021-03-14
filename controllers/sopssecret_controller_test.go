@@ -76,7 +76,7 @@ var _ = Describe("sopssecret controller", func() {
 
 			Eventually(func() int {
 				return len(mockedDecrytor.DecryptCalls())
-			}, maxTimeout).Should(Equal(1))
+			}, maxTimeout).Should(BeNumerically(">", 0))
 
 			createdSecret := &corev1.Secret{}
 			Consistently(func() error {
