@@ -10,7 +10,7 @@ kind: Pod
 spec:
   containers:
   - name: sops-converter-builder
-    image: docker.dhouti.dev/sops-converter-builder:v0.0.1
+    image: docker.dhouti.dev/sops-converter-builder:v0.0.2
     command:
     - cat
     tty: true
