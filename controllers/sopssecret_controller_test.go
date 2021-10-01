@@ -19,6 +19,7 @@ package controllers_test
 import (
 	"context"
 	"math/rand"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 
@@ -190,6 +191,7 @@ var _ = Describe("sopssecret controller", func() {
 				return createdSecret.Data["new"]
 			}, maxTimeout).Should(BeNil())
 
+			time.Sleep(time.Second)
 			createdSecret.Data["secret"] = []byte("sadfasdf")
 			err = k8sClient.Update(ctx, createdSecret)
 			Expect(err).ToNot(HaveOccurred())

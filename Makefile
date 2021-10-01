@@ -42,7 +42,7 @@ generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 mocks:
-	go get github.com/matryer/moq
+	go install github.com/matryer/moq@latest
 	go generate controllers/sopssecret_controller.go
 
 # Build the docker image
