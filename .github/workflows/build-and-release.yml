@@ -32,11 +32,8 @@ jobs:
         run: |
           curl -L -o kubebuilder_2.3.2_linux_amd64.tar.gz https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.2/kubebuilder_2.3.2_linux_amd64.tar.gz
           tar -xzf kubebuilder_2.3.2_linux_amd64.tar.gz
-          mkdir -p /usr/local/bin/kubebuilder
-          mv kubebuilder_2.3.2_linux_amd64/bin /usr/local/bin/kubebuilder/
-          ls -lah /usr/local/bin/kubebuilder
-          echo "-------------"
-          ls -lah /usr/local/bin/kubebuilder/bin
+          mkdir -p /usr/local/kubebuilder
+          mv kubebuilder_2.3.2_linux_amd64/bin /usr/local/kubebuilder/
       -
         name: Tests
         run: |
