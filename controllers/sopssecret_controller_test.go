@@ -19,7 +19,6 @@ package controllers_test
 import (
 	"context"
 	"math/rand"
-	"time"
 
 	. "github.com/onsi/ginkgo"
 
@@ -191,9 +190,19 @@ var _ = Describe("sopssecret controller", func() {
 				return createdSecret.Data["new"]
 			}, maxTimeout).Should(BeNil())
 
-			time.Sleep(time.Second)
-			createdSecret.Data["secret"] = []byte("sadfasdf")
-			err = k8sClient.Update(ctx, createdSecret)
+			// This update can be flaky, try a few times.
+			attempts := 0
+			for attempts <= 3 {
+				createdSecret.Data["secret"] = []byte("sadfasdf")
+				err = k8sClient.Update(ctx, createdSecret)
+				if err != nil {
+					err = k8sClient.Get(ctx, createdSecretKey, createdSecret)
+					Expect(err).ToNot(HaveOccurred())
+					attempts = attempts + 1
+				} else {
+					break
+				}
+			}
 			Expect(err).ToNot(HaveOccurred())
 
 			Eventually(func() []byte {
@@ -204,7 +213,7 @@ var _ = Describe("sopssecret controller", func() {
 
 			Eventually(func() int {
 				return len(mockedDecrytor.DecryptCalls())
-			}, maxTimeout).Should(Equal(3))
+			}, maxTimeout).Should(Equal(3 + attempts))
 		})
 	})
 })
