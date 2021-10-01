@@ -34,6 +34,7 @@ jobs:
           tar -xzf kubebuilder_2.3.2_linux_amd64.tar.gz
           mkdir -p /usr/local/bin/kubebuilder
           mv kubebuilder_2.3.2_linux_amd64/bin /usr/local/bin/kubebuilder/
+          ls -lah
       -
         name: Tests
         run: |
