@@ -1,4 +1,5 @@
-name: buildon:
+name: build
+on:
   push:
     branches:
       - 'test-new-build'
