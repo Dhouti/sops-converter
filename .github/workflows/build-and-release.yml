@@ -30,8 +30,10 @@ jobs:
       -
         name: Install Kubebuilder
         run: |
-          curl -L -o kubebuilder https://go.kubebuilder.io/dl/latest/$(go env GOOS)/$(go env GOARCH)
-          chmod +x kubebuilder && mv kubebuilder /usr/local/bin/
+          curl -L https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.2/kubebuilder_2.3.2_linux_amd64.tar.gz
+          tar -xzf kubebuilder_2.3.2_linux_amd64.tar.gz
+          mkdir -p /usr/local/bin/kubebuilder
+          mv kubebuilder_2.3.2_linux_amd64/bin /usr/local/bin/kubebuilder/
       -
         name: Tests
         run: |
