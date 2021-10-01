@@ -210,10 +210,6 @@ var _ = Describe("sopssecret controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 				return createdSecret.Data["secret"]
 			}, maxTimeout).Should(Equal([]byte("update")))
-
-			Eventually(func() int {
-				return len(mockedDecrytor.DecryptCalls())
-			}, maxTimeout).Should(Equal(3 + attempts))
 		})
 	})
 })
