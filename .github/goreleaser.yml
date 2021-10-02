@@ -1,0 +1,69 @@
+builds:
+  - main: ./cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+dockers:
+  - goarch: amd64
+    image_templates:
+      - "ghcr.io/dhouti/sops-converter:amd64-{{ .Tag }}"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=repository=http://github.com/dhouti/sops-converter"
+    extra_files:
+      - go.mod
+      - go.sum
+      - main.go
+      - api/
+      - controllers/
+      - hack/
+      - Makefile
+
+  - goarch: arm64
+    image_templates:
+      - "ghcr.io/dhouti/sops-converter:arm64v8-{{ .Tag }}"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=repository=http://github.com/dhouti/sops-converter"
+    extra_files:
+      - go.mod
+      - go.sum
+      - main.go
+      - api/
+      - controllers/
+      - hack/
+      - Makefile
+
+docker_manifests:
+  - name_template: "ghcr.io/dhouti/sops-converter:{{ .Tag }}"
+    image_templates:
+      - ghcr.io/dhouti/sops-converter:arm64v8-{{ .Tag }}
+      - ghcr.io/dhouti/sops-converter:amd64-{{ .Tag }}
+
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
