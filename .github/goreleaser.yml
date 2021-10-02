@@ -21,6 +21,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.source={{.GitURL}}"
       - "--label=repository=http://github.com/dhouti/sops-converter"
+      - "--platform=linux/amd64"
     extra_files:
       - go.mod
       - go.sum
@@ -32,7 +33,7 @@ dockers:
 
   - goarch: arm64
     image_templates:
-      - "ghcr.io/dhouti/sops-converter:arm64v8-{{ .Tag }}"
+      - "ghcr.io/dhouti/sops-converter:arm64-{{ .Tag }}"
     dockerfile: Dockerfile
     build_flag_templates:
       - "--pull"
@@ -42,6 +43,7 @@ dockers:
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--label=org.opencontainers.image.source={{.GitURL}}"
       - "--label=repository=http://github.com/dhouti/sops-converter"
+      - "--platform=linux/arm64"
     extra_files:
       - go.mod
       - go.sum
@@ -54,7 +56,7 @@ dockers:
 docker_manifests:
   - name_template: "ghcr.io/dhouti/sops-converter:{{ .Tag }}"
     image_templates:
-      - ghcr.io/dhouti/sops-converter:arm64v8-{{ .Tag }}
+      - ghcr.io/dhouti/sops-converter:arm64-{{ .Tag }}
       - ghcr.io/dhouti/sops-converter:amd64-{{ .Tag }}
 
 checksum:
