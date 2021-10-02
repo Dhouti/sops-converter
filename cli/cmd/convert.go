@@ -19,17 +19,24 @@ package cmd
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"text/template"
 
+	"github.com/Masterminds/sprig"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/kubernetes/scheme"
 
+	secretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+
+	_ "embed"
 )
+
+//go:embed templates/sopssecret.yml
+var sopsSecretTemplate string
 
 // convertCmd represents the convert command
 var convertCmd = &cobra.Command{
@@ -39,13 +46,13 @@ var convertCmd = &cobra.Command{
 	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			return errors.New("Must provide args.")
+			return errors.New("must provide args")
 		}
 
 		targetFile, err := ioutil.ReadFile(args[0])
 		if err != nil {
 			if os.IsNotExist(err) {
-				return errors.New("First arg must be a target filename.")
+				return errors.New("first arg must be a target filename")
 			}
 			return err
 		}
@@ -107,56 +114,20 @@ var convertCmd = &cobra.Command{
 			return err
 		}
 
-		sopsSecretTemplate := yaml.MapSlice{
-			yaml.MapItem{
-				Key:   "apiVersion",
-				Value: "secrets.dhouti.dev/v1beta1",
-			},
-			yaml.MapItem{
-				Key:   "kind",
-				Value: "SopsSecret",
-			},
-			yaml.MapItem{
-				Key: "metadata",
-				Value: yaml.MapSlice{
-					yaml.MapItem{
-						Key:   "name",
-						Value: secret.Name,
-					},
-					yaml.MapItem{
-						Key:   "namespace",
-						Value: secret.Namespace,
-					},
-				},
-			},
-			yaml.MapItem{
-				Key:   "type",
-				Value: secret.Type,
-			},
-			yaml.MapItem{
-				Key:   "data",
-				Value: string(sopsStdout.Bytes()),
-			},
-		}
+		generatedSopsSecret := &secretsv1beta1.SopsSecret{}
+		generatedSopsSecret.Type = secret.Type
+		generatedSopsSecret.ObjectMeta = secret.ObjectMeta
+		generatedSopsSecret.Data = sopsStdout.String()
 
-		// If type not specified drop the key.
-		// The controller will handle defaulting.
-		if secret.Type == "" {
-			for index, item := range sopsSecretTemplate {
-				keyString, ok := item.Key.(string)
-				if ok && keyString == "type" {
-					sopsSecretTemplate = append(sopsSecretTemplate[:index], sopsSecretTemplate[index+1:]...)
-					break
-				}
-			}
-		}
-
-		output, err := yaml.Marshal(sopsSecretTemplate)
+		tmpl, err := template.New("sopssecret").Funcs(sprig.TxtFuncMap()).Parse(sopsSecretTemplate)
 		if err != nil {
 			return err
 		}
 
-		fmt.Println(string(output))
+		err = tmpl.Execute(os.Stdout, *generatedSopsSecret)
+		if err != nil {
+			return err
+		}
 		return nil
 	},
 }

@@ -38,10 +38,10 @@ var editCmd = &cobra.Command{
 		and loads it into the $EDITOR of your choice.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			return errors.New("No filename given.")
+			return errors.New("no filename given")
 		}
 		if len(args) > 1 {
-			return errors.New("Too many args.")
+			return errors.New("too many args")
 		}
 		targetFile, err := ioutil.ReadFile(args[0])
 		if err != nil {
@@ -68,7 +68,7 @@ var editCmd = &cobra.Command{
 		// Assert that object is SopsSecret, if not exit
 		sopsSecret, ok := m.(*secretsv1beta1.SopsSecret)
 		if !ok {
-			return errors.New("file is not a SopsSecret")
+			return errors.New("file is not a sopssecret")
 		}
 
 		// Open a temporary file.

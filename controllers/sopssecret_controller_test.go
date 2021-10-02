@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	sopssecretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
+	sopsecretcontroller "github.com/dhouti/sops-converter/controllers"
 	controllersmocks "github.com/dhouti/sops-converter/controllers/mocks"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -210,6 +211,36 @@ var _ = Describe("sopssecret controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 				return createdSecret.Data["secret"]
 			}, maxTimeout).Should(Equal([]byte("update")))
+		})
+
+		It("does not overwrite ignored keys", func() {
+			newSecret := getTestSopsSecret()
+			newSecret.Data = "secret: update"
+			annotations := map[string]string{
+				sopsecretcontroller.IgnoreKeysAnnotations: "notupdated",
+			}
+			newSecret.Annotations = annotations
+
+			err := k8sClient.Create(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			createdSecretKey := getNamespacedName()
+			createdSecret := &corev1.Secret{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			Expect(createdSecret.Data["secret"]).To(Equal([]byte("update")))
+
+			createdSecret.Data["notupdated"] = []byte("value")
+			err = k8sClient.Update(ctx, createdSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			Consistently(func() []byte {
+				err = k8sClient.Get(ctx, createdSecretKey, createdSecret)
+				Expect(err).ToNot(HaveOccurred())
+				return createdSecret.Data["notupdated"]
+			}, maxTimeout).Should(Equal([]byte("value")))
 		})
 	})
 })

@@ -21,13 +21,18 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	secretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
 	sops "go.mozilla.org/sops/v3/decrypt"
@@ -36,8 +41,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const secretChecksumAnotation = "secrets.dhouti.dev/secretChecksum"
-const sopsChecksumAnnotation = "secrets.dhouti.dev/sopsChecksum"
+const SecretChecksumAnotation string = "secrets.dhouti.dev/secretChecksum"
+const SopsChecksumAnnotation string = "secrets.dhouti.dev/sopsChecksum"
+const IgnoreKeysAnnotations string = "secrets.dhouti.dev/ignoreKeys"
 
 var _ Decryptor = &SopsDecrytor{}
 
@@ -102,8 +108,8 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	currentSecretChecksum := hashItem(secretDataBytes)
 	currentSopsChecksum := hashItem([]byte(obj.Data))
 
-	existingSecretChecksum, hasSecretChecksum := fetchSecret.Annotations[secretChecksumAnotation]
-	existingSopsChecksum, hasSopsChecksum := fetchSecret.Annotations[sopsChecksumAnnotation]
+	existingSecretChecksum, hasSecretChecksum := fetchSecret.Annotations[SecretChecksumAnotation]
+	existingSopsChecksum, hasSopsChecksum := fetchSecret.Annotations[SopsChecksumAnnotation]
 	if (hasSecretChecksum && hasSopsChecksum) && (existingSecretChecksum == currentSecretChecksum) && (existingSopsChecksum == currentSopsChecksum) {
 		log.Info("Checksums matched, skipping.")
 		return ctrl.Result{}, nil
@@ -130,7 +136,21 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		generatedSecretData[k] = []byte(v)
 	}
 
-	// Duplicating this calms a flaky test and prevents an unnecessary reconcile on new objects
+	// Add back ignored keys from live secret
+	ignoredSecretKeysRaw, ok := obj.ObjectMeta.Annotations[IgnoreKeysAnnotations]
+	if ok {
+		ignoredKeys := strings.Split(ignoredSecretKeysRaw, ",")
+		for _, key := range ignoredKeys {
+			existingKey, ok := fetchSecret.Data[key]
+			if !ok {
+				continue
+			}
+
+			generatedSecretData[key] = existingKey
+		}
+	}
+
+	// Prevents an unnecessary reconcile on new objects
 	secretDataBytes, err = json.Marshal(generatedSecretData)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -146,14 +166,23 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, generatedSecret, func() error {
-		generatedSecret.Annotations = map[string]string{
-			secretChecksumAnotation: currentSecretChecksum,
-			sopsChecksumAnnotation:  currentSopsChecksum,
+		baseAnnotations := make(map[string]string)
+		if obj.Annotations != nil {
+			baseAnnotations = obj.Annotations
 		}
+		generatedSecret.Annotations = baseAnnotations
+		generatedSecret.Annotations[SecretChecksumAnotation] = currentSecretChecksum
+		generatedSecret.Annotations[SopsChecksumAnnotation] = currentSopsChecksum
+
+		baseLabels := make(map[string]string)
+		if obj.Labels != nil {
+			baseLabels = obj.Labels
+		}
+		generatedSecret.Labels = baseLabels
 		generatedSecret.Data = generatedSecretData
 
 		generatedSecret.Type = obj.Type
-		return controllerutil.SetControllerReference(obj, generatedSecret, r.Scheme)
+		return nil
 	})
 
 	if err != nil {
@@ -164,7 +193,21 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).For(&secretsv1beta1.SopsSecret{}).Owns(&corev1.Secret{}).Complete(r)
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&secretsv1beta1.SopsSecret{}).
+		Watches(&source.Kind{Type: &corev1.Secret{}}, handler.EnqueueRequestsFromMapFunc(
+			func(o client.Object) []reconcile.Request {
+				return []reconcile.Request{
+					{
+						NamespacedName: types.NamespacedName{
+							Name:      o.GetName(),
+							Namespace: o.GetNamespace(),
+						},
+					},
+				}
+			},
+		)).
+		Complete(r)
 }
 
 func hashItem(data []byte) string {

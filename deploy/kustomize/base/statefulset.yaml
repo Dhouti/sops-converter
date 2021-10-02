@@ -26,7 +26,7 @@ spec:
       - command:
         - /manager
         name: sops-converter-controller
-        image: ghcr.io/dhouti/sops-converter:v0.0.4
+        image: ghcr.io/dhouti/sops-converter:v0.0.5
         imagePullPolicy: Always
         resources:
           limits:

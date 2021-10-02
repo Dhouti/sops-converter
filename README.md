@@ -76,5 +76,21 @@ If you wish to use a different editor such as Atom or Sublime
 ```
 export EDITOR='atom -w'
 or
-export EDITOR='subl -w'
+export EDITOR='code -w'
+```
+
+### Annotations
+
+Currently there is a single annotation that can tweak the controller behavior.
+
+`secrets.dhouti.dev/ignoreKeys` 
+This tells the controller to not overwrite keys in the output Secret, even if they are not present in the source SopsSecret.
+
+Usage:
+```
+apiVersion: secrets.dhouti.dev/v1beta1
+kind: SopsSecret
+metadata:
+  annotations:
+    secrets.dhouti.dev/ignoreKeys: "key1,key2"
 ```
