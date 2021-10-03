@@ -19,15 +19,18 @@ package controllers_test
 import (
 	"context"
 	"math/rand"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 
 	. "github.com/onsi/gomega"
 
 	sopssecretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
+	"github.com/dhouti/sops-converter/controllers"
 	sopsecretcontroller "github.com/dhouti/sops-converter/controllers"
 	controllersmocks "github.com/dhouti/sops-converter/controllers/mocks"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -59,7 +62,10 @@ var _ = Describe("sopssecret controller", func() {
 		// Teardown the current object after every test to prevent mock collisions in the reconciler
 		currentObject := getTestSopsSecret()
 		err := k8sClient.Delete(ctx, currentObject)
-		Expect(err).ToNot(HaveOccurred())
+		// Some test involve garbage collection, it's fine if the object doesn't exist.
+		if err != nil && !k8serrors.IsNotFound(err) {
+			Expect(err).ToNot(HaveOccurred())
+		}
 
 		Eventually(func() error {
 			fetchSopsSecret := &sopssecretsv1beta1.SopsSecret{}
@@ -110,6 +116,7 @@ var _ = Describe("sopssecret controller", func() {
 	Context("Annotation behaviors", func() {
 		It("Reconcile short-circuits on match", func() {
 			newSecret := getTestSopsSecret()
+			newSecretKey := types.NamespacedName{Name: newSecret.Name, Namespace: newSecret.Namespace}
 			newSecret.Data = "annotation: test"
 
 			err := k8sClient.Create(ctx, newSecret)
@@ -123,10 +130,12 @@ var _ = Describe("sopssecret controller", func() {
 
 			Expect(createdSecret.Data["annotation"]).To(Equal([]byte("test")))
 
+			_ = k8sClient.Get(ctx, newSecretKey, newSecret)
 			createdSecret.ObjectMeta.Annotations["arbitrary-update"] = "true"
 			err = k8sClient.Update(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
 
+			_ = k8sClient.Get(ctx, newSecretKey, newSecret)
 			createdSecret.ObjectMeta.Annotations["arbitrary-update"] = "false"
 			err = k8sClient.Update(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
@@ -138,6 +147,7 @@ var _ = Describe("sopssecret controller", func() {
 
 		It("updates the secret when sopssecret is updated", func() {
 			newSecret := getTestSopsSecret()
+			newSecretKey := types.NamespacedName{Name: newSecret.Name, Namespace: newSecret.Namespace}
 			newSecret.Data = "secret: update"
 
 			err := k8sClient.Create(ctx, newSecret)
@@ -151,6 +161,7 @@ var _ = Describe("sopssecret controller", func() {
 
 			Expect(createdSecret.Data["secret"]).To(Equal([]byte("update")))
 
+			_ = k8sClient.Get(ctx, newSecretKey, newSecret)
 			newSecret.Data = "secret: test"
 			err = k8sClient.Update(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
@@ -181,6 +192,7 @@ var _ = Describe("sopssecret controller", func() {
 
 			Expect(createdSecret.Data["secret"]).To(Equal([]byte("update")))
 
+			_ = k8sClient.Get(ctx, createdSecretKey, createdSecret)
 			createdSecret.Data["new"] = []byte("asdfd")
 			err = k8sClient.Update(ctx, createdSecret)
 			Expect(err).ToNot(HaveOccurred())
@@ -191,19 +203,10 @@ var _ = Describe("sopssecret controller", func() {
 				return createdSecret.Data["new"]
 			}, maxTimeout).Should(BeNil())
 
-			// This update can be flaky, try a few times.
-			attempts := 0
-			for attempts <= 3 {
-				createdSecret.Data["secret"] = []byte("sadfasdf")
-				err = k8sClient.Update(ctx, createdSecret)
-				if err != nil {
-					err = k8sClient.Get(ctx, createdSecretKey, createdSecret)
-					Expect(err).ToNot(HaveOccurred())
-					attempts = attempts + 1
-				} else {
-					break
-				}
-			}
+			time.Sleep(time.Second)
+			_ = k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			createdSecret.Data["secret"] = []byte("sadfasdf")
+			err = k8sClient.Update(ctx, createdSecret)
 			Expect(err).ToNot(HaveOccurred())
 
 			Eventually(func() []byte {
@@ -217,7 +220,7 @@ var _ = Describe("sopssecret controller", func() {
 			newSecret := getTestSopsSecret()
 			newSecret.Data = "secret: update"
 			annotations := map[string]string{
-				sopsecretcontroller.IgnoreKeysAnnotations: "notupdated",
+				sopsecretcontroller.IgnoreKeysAnnotation: "notupdated,notremoved",
 			}
 			newSecret.Annotations = annotations
 
@@ -229,18 +232,95 @@ var _ = Describe("sopssecret controller", func() {
 			Eventually(func() error {
 				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
 			}, maxTimeout).Should(Not(HaveOccurred()))
-
 			Expect(createdSecret.Data["secret"]).To(Equal([]byte("update")))
 
+			_ = k8sClient.Get(ctx, createdSecretKey, createdSecret)
 			createdSecret.Data["notupdated"] = []byte("value")
+			createdSecret.Data["notremoved"] = []byte("test")
 			err = k8sClient.Update(ctx, createdSecret)
 			Expect(err).ToNot(HaveOccurred())
 
 			Consistently(func() []byte {
 				err = k8sClient.Get(ctx, createdSecretKey, createdSecret)
 				Expect(err).ToNot(HaveOccurred())
-				return createdSecret.Data["notupdated"]
-			}, maxTimeout).Should(Equal([]byte("value")))
+				return createdSecret.Data["notremoved"]
+			}, maxTimeout).Should(Equal([]byte("test")))
+			Expect(createdSecret.Data["notupdated"]).To(Equal([]byte("value")))
+		})
+
+		It("annotations and labels behaviors", func() {
+			newSecret := getTestSopsSecret()
+			newSecret.Data = "secret: update"
+			newSecret.Annotations = map[string]string{
+				"test.annotation":   "value",
+				"test-annotation.2": "ok",
+			}
+			newSecret.Labels = map[string]string{
+				"test.label":   "value",
+				"test-label.2": "ok",
+			}
+
+			err := k8sClient.Create(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			createdSecretKey := getNamespacedName()
+			createdSecret := &corev1.Secret{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			Expect(createdSecret.Annotations["test.annotation"]).To(Equal("value"))
+			Expect(createdSecret.Annotations["test-annotation.2"]).To(Equal("ok"))
+
+			Expect(createdSecret.Labels["test.label"]).To(Equal("value"))
+			Expect(createdSecret.Labels["test-label.2"]).To(Equal("ok"))
+
+			// Also test if labels nad
+		})
+
+		It("secret is deleted when sopssecret is deleted", func() {
+			newSecret := getTestSopsSecret()
+			newSecret.Data = "secret: update"
+
+			err := k8sClient.Create(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			createdSecretKey := getNamespacedName()
+			createdSecret := &corev1.Secret{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			err = k8sClient.Delete(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(HaveOccurred())
+		})
+
+		It("secret is not deleted when skipFinalizer annotation set", func() {
+			newSecret := getTestSopsSecret()
+			newSecret.Data = "secret: update"
+			newSecret.Annotations = map[string]string{
+				controllers.SkipFinalizerAnnotation: "arbitrary-text-here",
+			}
+
+			err := k8sClient.Create(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			createdSecretKey := getNamespacedName()
+			createdSecret := &corev1.Secret{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			err = k8sClient.Delete(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			Consistently(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).ShouldNot(HaveOccurred())
 		})
 	})
 })

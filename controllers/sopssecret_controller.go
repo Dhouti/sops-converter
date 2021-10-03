@@ -21,10 +21,14 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,7 +47,10 @@ import (
 
 const SecretChecksumAnotation string = "secrets.dhouti.dev/secretChecksum"
 const SopsChecksumAnnotation string = "secrets.dhouti.dev/sopsChecksum"
-const IgnoreKeysAnnotations string = "secrets.dhouti.dev/ignoreKeys"
+const IgnoreKeysAnnotation string = "secrets.dhouti.dev/ignoreKeys"
+const SkipFinalizerAnnotation string = "secrets.dhouti.dev/skipFinalizer"
+
+const DeletionFinalizer string = "secrets.dhouti.dev/garbageCollection"
 
 var _ Decryptor = &SopsDecrytor{}
 
@@ -83,14 +90,69 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	log := r.Log.WithValues("sopssecret", req.NamespacedName)
 
+	// Attempt to fetch SopsSecret object. Short circuit if not exists
 	obj := &secretsv1beta1.SopsSecret{}
 	err := r.Get(ctx, req.NamespacedName, obj)
 	if err != nil {
-		log.Error(err, "failed to get sopssecret object")
+		if k8serrors.IsNotFound(err) {
+			err = nil
+		}
 		return ctrl.Result{}, err
 	}
 
+	dt := obj.GetDeletionTimestamp()
+
+	finalizersDisabled, _ := strconv.ParseBool(os.Getenv("DISABLE_FINALIZERS"))
+
+	// Add finalizer if not set and not currently being deleted
+	if dt.IsZero() && !controllerutil.ContainsFinalizer(obj, DeletionFinalizer) && !finalizersDisabled {
+		controllerutil.AddFinalizer(obj, DeletionFinalizer)
+		err = r.Update(ctx, obj)
+		if err != nil {
+			return ctrl.Result{Requeue: true}, errors.New("unable to update finalizers")
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Delete finalizer if finalizer if they're disabled
+	if finalizersDisabled && controllerutil.ContainsFinalizer(obj, DeletionFinalizer) {
+		controllerutil.RemoveFinalizer(obj, DeletionFinalizer)
+		err = r.Update(ctx, obj)
+		if err != nil {
+			return ctrl.Result{Requeue: true}, errors.New("unable to remove finalizers")
+		}
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	fetchSecret := &corev1.Secret{}
+	// Object is being deleted
+	if !dt.IsZero() {
+		if controllerutil.ContainsFinalizer(obj, DeletionFinalizer) {
+			// Check if corev1.secret exists
+			err = r.Get(ctx, req.NamespacedName, fetchSecret)
+			secretNotFound := k8serrors.IsNotFound(err)
+			if err != nil && !secretNotFound {
+				return ctrl.Result{Requeue: true}, err
+			}
+
+			// Delete the secret if it exists and skipFinalizer annotation is not applied
+			_, skipFinalizer := obj.Annotations[SkipFinalizerAnnotation]
+			if !secretNotFound && !skipFinalizer {
+				err = r.Delete(ctx, fetchSecret)
+				if err != nil {
+					return ctrl.Result{Requeue: true}, err
+				}
+			}
+
+			// Remove the finalizer and exit
+			controllerutil.RemoveFinalizer(obj, DeletionFinalizer)
+			err = r.Update(ctx, obj)
+			if err != nil {
+				return ctrl.Result{Requeue: true}, errors.New("unable to remove finalizer")
+			}
+		}
+	}
+
 	err = r.Get(ctx, req.NamespacedName, fetchSecret)
 	if err != nil {
 		if !kerrors.IsNotFound(err) {
@@ -137,7 +199,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Add back ignored keys from live secret
-	ignoredSecretKeysRaw, ok := obj.ObjectMeta.Annotations[IgnoreKeysAnnotations]
+	ignoredSecretKeysRaw, ok := obj.ObjectMeta.Annotations[IgnoreKeysAnnotation]
 	if ok {
 		ignoredKeys := strings.Split(ignoredSecretKeysRaw, ",")
 		for _, key := range ignoredKeys {
@@ -195,6 +257,8 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsv1beta1.SopsSecret{}).
+		// Use a WatchMap over an Ownerref, this should allow for safe deletion of the CRD and all objects without garbage collecting all of the secrets.
+		// Would require scaling down the controller first.
 		Watches(&source.Kind{Type: &corev1.Secret{}}, handler.EnqueueRequestsFromMapFunc(
 			func(o client.Object) []reconcile.Request {
 				return []reconcile.Request{
