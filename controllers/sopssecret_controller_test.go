@@ -240,6 +240,7 @@ var _ = Describe("sopssecret controller", func() {
 			err = k8sClient.Update(ctx, createdSecret)
 			Expect(err).ToNot(HaveOccurred())
 
+			time.Sleep(time.Second)
 			Consistently(func() []byte {
 				err = k8sClient.Get(ctx, createdSecretKey, createdSecret)
 				Expect(err).ToNot(HaveOccurred())
