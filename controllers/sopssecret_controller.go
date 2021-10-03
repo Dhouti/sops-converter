@@ -232,7 +232,10 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if obj.Annotations != nil {
 			baseAnnotations = obj.Annotations
 		}
+
 		generatedSecret.Annotations = baseAnnotations
+		// This causes issues with argocd if not cleared.
+		delete(generatedSecret.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
 		generatedSecret.Annotations[SecretChecksumAnotation] = currentSecretChecksum
 		generatedSecret.Annotations[SopsChecksumAnnotation] = currentSopsChecksum
 
