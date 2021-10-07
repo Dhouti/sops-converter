@@ -22,12 +22,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,7 +41,7 @@ import (
 	secretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
 	sops "go.mozilla.org/sops/v3/decrypt"
 	corev1 "k8s.io/api/core/v1"
-	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -82,12 +83,12 @@ func (r *SopsSecretReconciler) InjectDecryptor(d Decryptor) {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs="*"
 
 func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithValues("sopssecret", req.NamespacedName)
 	// If not otherwise defined, default to the real decrypt func.
 	if r.Decryptor == nil {
 		realDecryptor := &SopsDecrytor{}
 		r.Decryptor = realDecryptor
 	}
-	log := r.Log.WithValues("sopssecret", req.NamespacedName)
 
 	// Attempt to fetch SopsSecret object. Short circuit if not exists
 	obj := &secretsv1beta1.SopsSecret{}
@@ -99,12 +100,44 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
+	// If namespaces not set use namespace
+	if len(obj.Spec.Template.Namespaces) == 0 {
+		obj.Spec.Template.Namespaces = []string{
+			obj.Namespace,
+		}
+	}
+
 	dt := obj.GetDeletionTimestamp()
 
 	var finalizersDisabled bool
 	finalizersDisabledByEnv, _ := strconv.ParseBool(os.Getenv("DISABLE_FINALIZERS"))
 	if finalizersDisabledByEnv || obj.Spec.SkipFinalizers {
 		finalizersDisabled = true
+	}
+
+	// Cleanup secrets in namespaces no longer in spec.
+	ownershipLabelValue := fmt.Sprintf("%s.%s", obj.Name, obj.Namespace)
+	secretList := &corev1.SecretList{}
+	err = r.List(ctx, secretList, client.MatchingLabels{
+		OwnershipLabel: ownershipLabelValue,
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	for _, secretListItem := range secretList.Items {
+		var foundItem bool
+		for _, curNamespace := range obj.Spec.Template.Namespaces {
+			if secretListItem.ObjectMeta.Namespace == curNamespace {
+				foundItem = true
+			}
+		}
+		if !foundItem {
+			err = r.Delete(ctx, &secretListItem)
+			if err != nil && !k8serrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	// Add finalizer if not set and not currently being deleted
@@ -127,10 +160,31 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	var requeue bool
+	for _, targetNamespace := range obj.Spec.Template.Namespaces {
+		res, err := r.ReconcileNamespace(ctx, log, finalizersDisabled, obj, targetNamespace)
+		if res.Requeue {
+			requeue = true
+		}
+
+		// If there's an error return immediately
+		if err != nil {
+			return res, err
+		}
+	}
+
+	return ctrl.Result{Requeue: requeue}, err
+}
+
+func (r *SopsSecretReconciler) ReconcileNamespace(ctx context.Context, log logr.Logger, finalizersDisabled bool, obj *secretsv1beta1.SopsSecret, targetNamespace string) (ctrl.Result, error) {
+	targetSecret := types.NamespacedName{
+		Name:      obj.Name,
+		Namespace: targetNamespace,
+	}
 	// Fetch the secret
 	// If ownership label not present on existing secret short circuit
 	fetchSecret := &corev1.Secret{}
-	err = r.Get(ctx, req.NamespacedName, fetchSecret)
+	err := r.Get(ctx, targetSecret, fetchSecret)
 	secretNotFound := k8serrors.IsNotFound(err)
 	if err != nil && !secretNotFound {
 		return ctrl.Result{}, err
@@ -143,6 +197,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
+	dt := obj.GetDeletionTimestamp()
 	// Object is being deleted
 	if !dt.IsZero() {
 		if controllerutil.ContainsFinalizer(obj, DeletionFinalizer) {
@@ -160,14 +215,6 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			if err != nil {
 				return ctrl.Result{Requeue: true}, errors.New("unable to remove finalizer")
 			}
-		}
-	}
-
-	err = r.Get(ctx, req.NamespacedName, fetchSecret)
-	if err != nil {
-		if !kerrors.IsNotFound(err) {
-			log.Error(err, "failed to get secret object")
-			return ctrl.Result{}, err
 		}
 	}
 
@@ -242,13 +289,14 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if obj.Spec.Template.Labels != nil {
 		secretLabels = obj.Spec.Template.Labels
 	}
-	// Add ownership label
-	secretLabels[OwnershipLabel] = "true"
+
+	ownershipLabelValue := fmt.Sprintf("%s.%s", obj.Name, obj.Namespace)
+	secretLabels[OwnershipLabel] = string(ownershipLabelValue)
 
 	generatedSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      obj.Name,
-			Namespace: obj.Namespace,
+			Namespace: targetNamespace,
 		},
 	}
 
@@ -266,6 +314,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	return ctrl.Result{}, err
+
 }
 
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -275,11 +324,21 @@ func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Would require scaling down the controller first.
 		Watches(&source.Kind{Type: &corev1.Secret{}}, handler.EnqueueRequestsFromMapFunc(
 			func(o client.Object) []reconcile.Request {
+				ownershipLabel, ok := o.GetLabels()[OwnershipLabel]
+				if !ok {
+					return nil
+				}
+
+				splitOwnershipLabel := strings.Split(ownershipLabel, ".")
+				if len(splitOwnershipLabel) != 2 {
+					return nil
+				}
+
 				return []reconcile.Request{
 					{
 						NamespacedName: types.NamespacedName{
-							Name:      o.GetName(),
-							Namespace: o.GetNamespace(),
+							Name:      splitOwnershipLabel[0],
+							Namespace: splitOwnershipLabel[1],
 						},
 					},
 				}

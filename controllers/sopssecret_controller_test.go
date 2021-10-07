@@ -18,6 +18,7 @@ package controllers_test
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -319,6 +320,87 @@ var _ = Describe("sopssecret controller", func() {
 				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
 			}, maxTimeout).ShouldNot(HaveOccurred())
 		})
+
+		It("Cross namespace reconcile", func() {
+			newSecret := getTestSopsSecret()
+			newSecret.Spec.Template.Namespaces = []string{
+				"cross-namespace",
+				"cross-namespace1",
+			}
+			newSecret.Data = "secret: exists"
+
+			newNamespace := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cross-namespace",
+				},
+			}
+			err := k8sClient.Create(ctx, newNamespace)
+			Expect(err).ToNot(HaveOccurred())
+			newNamespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cross-namespace1",
+				},
+			}
+			err = k8sClient.Create(ctx, newNamespace)
+			Expect(err).ToNot(HaveOccurred())
+
+			err = k8sClient.Create(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			createdSecretKey := getNamespacedName()
+			createdSecret := &corev1.Secret{}
+
+			createdSecretKey.Namespace = "cross-namespace"
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			Expect(createdSecret.Data["secret"]).To(Equal([]byte("exists")))
+
+			createdSecretKey.Namespace = "cross-namespace1"
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			Expect(createdSecret.Data["secret"]).To(Equal([]byte("exists")))
+		})
+
+		It("Cross namespace garbage collection", func() {
+			newSecret := getTestSopsSecret()
+			newSecret.Spec.Template.Namespaces = []string{
+				"cross-namespace",
+				"cross-namespace1",
+			}
+			newSecret.Data = "secret: exists"
+
+			err := k8sClient.Create(ctx, newSecret)
+			Expect(err).ToNot(HaveOccurred())
+
+			createdSecretKey := getNamespacedName()
+			createdSecret := &corev1.Secret{}
+
+			createdSecretKey.Namespace = "cross-namespace"
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			createdSecretKey.Namespace = "cross-namespace1"
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(Not(HaveOccurred()))
+
+			_ = k8sClient.Get(ctx, getNamespacedName(), newSecret)
+			newSecret.Spec.Template.Namespaces = []string{
+				"cross-namespace",
+			}
+			_ = k8sClient.Update(ctx, newSecret)
+
+			createdSecretKey.Namespace = "cross-namespace1"
+			Eventually(func() error {
+				return k8sClient.Get(ctx, createdSecretKey, createdSecret)
+			}, maxTimeout).Should(HaveOccurred())
+
+		})
 	})
 })
 
@@ -327,8 +409,8 @@ func getTestSopsSecret() *sopssecretsv1beta1.SopsSecret {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      currentObjectName,
 			Namespace: currentNamespace,
-			Labels: map[string]string{
-				"secrets.dhouti.dev/owned-by-controller": "true",
+			Annotations: map[string]string{
+				"secrets.dhouti.dev/owned-by-controller": fmt.Sprintf("%s.%s", currentObjectName, currentNamespace),
 			},
 		},
 	}
