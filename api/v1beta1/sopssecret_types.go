@@ -38,6 +38,7 @@ type SopsSecret struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Type   corev1.SecretType `json:"type,omitempty"`
+	Spec   SopsSecretSpec    `json:"spec,omitempty"`
 	Data   string            `json:"data,omitempty"`
 	Status SopsSecretStatus  `json:"status,omitempty"`
 }
@@ -49,6 +50,24 @@ type SopsSecretList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []SopsSecret `json:"items"`
+}
+
+type SopsSecretSpec struct {
+	Template       SopsSecretTemplate `json:"template,omitempty"`
+	IgnoredKeys    []string           `json:"ignoredKeys,omitempty"`
+	SkipFinalizers bool               `json:"skipFinalizers,omitempty"`
+}
+
+type SopsSecretTemplate struct {
+	SopsSecretTemplateMetadata `json:"metadata,omitempty"`
+}
+
+type SopsSecretTemplateMetadata struct {
+	Name       string   `json:"name,omitempty"`
+	Namespaces []string `json:"namespaces,omitempty"`
+
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
 }
 
 func init() {

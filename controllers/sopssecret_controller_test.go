@@ -26,8 +26,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	sopssecretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
-	"github.com/dhouti/sops-converter/controllers"
-	sopsecretcontroller "github.com/dhouti/sops-converter/controllers"
 	controllersmocks "github.com/dhouti/sops-converter/controllers/mocks"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -113,7 +111,7 @@ var _ = Describe("sopssecret controller", func() {
 		})
 	})
 
-	Context("Annotation behaviors", func() {
+	Context("General behaviors", func() {
 		It("Reconcile short-circuits on match", func() {
 			newSecret := getTestSopsSecret()
 			newSecretKey := types.NamespacedName{Name: newSecret.Name, Namespace: newSecret.Namespace}
@@ -219,10 +217,10 @@ var _ = Describe("sopssecret controller", func() {
 		It("does not overwrite ignored keys", func() {
 			newSecret := getTestSopsSecret()
 			newSecret.Data = "secret: update"
-			annotations := map[string]string{
-				sopsecretcontroller.IgnoreKeysAnnotation: "notupdated,notremoved",
+			newSecret.Spec.IgnoredKeys = []string{
+				"notupdated",
+				"notremoved",
 			}
-			newSecret.Annotations = annotations
 
 			err := k8sClient.Create(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
@@ -252,11 +250,12 @@ var _ = Describe("sopssecret controller", func() {
 		It("annotations and labels behaviors", func() {
 			newSecret := getTestSopsSecret()
 			newSecret.Data = "secret: update"
-			newSecret.Annotations = map[string]string{
+
+			newSecret.Spec.Template.Annotations = map[string]string{
 				"test.annotation":   "value",
 				"test-annotation.2": "ok",
 			}
-			newSecret.Labels = map[string]string{
+			newSecret.Spec.Template.Labels = map[string]string{
 				"test.label":   "value",
 				"test-label.2": "ok",
 			}
@@ -276,7 +275,6 @@ var _ = Describe("sopssecret controller", func() {
 			Expect(createdSecret.Labels["test.label"]).To(Equal("value"))
 			Expect(createdSecret.Labels["test-label.2"]).To(Equal("ok"))
 
-			// Also test if labels nad
 		})
 
 		It("secret is deleted when sopssecret is deleted", func() {
@@ -300,12 +298,10 @@ var _ = Describe("sopssecret controller", func() {
 			}, maxTimeout).Should(HaveOccurred())
 		})
 
-		It("secret is not deleted when skipFinalizer annotation set", func() {
+		It("secret is not deleted when skipFinalizer spec is set", func() {
 			newSecret := getTestSopsSecret()
 			newSecret.Data = "secret: update"
-			newSecret.Annotations = map[string]string{
-				controllers.SkipFinalizerAnnotation: "arbitrary-text-here",
-			}
+			newSecret.Spec.SkipFinalizers = true
 
 			err := k8sClient.Create(ctx, newSecret)
 			Expect(err).ToNot(HaveOccurred())
@@ -331,6 +327,9 @@ func getTestSopsSecret() *sopssecretsv1beta1.SopsSecret {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      currentObjectName,
 			Namespace: currentNamespace,
+			Labels: map[string]string{
+				"secrets.dhouti.dev/owned-by-controller": "true",
+			},
 		},
 	}
 }

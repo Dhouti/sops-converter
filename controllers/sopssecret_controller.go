@@ -24,7 +24,6 @@ import (
 	"errors"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
@@ -47,8 +46,8 @@ import (
 
 const SecretChecksumAnotation string = "secrets.dhouti.dev/secretChecksum"
 const SopsChecksumAnnotation string = "secrets.dhouti.dev/sopsChecksum"
-const IgnoreKeysAnnotation string = "secrets.dhouti.dev/ignoreKeys"
-const SkipFinalizerAnnotation string = "secrets.dhouti.dev/skipFinalizer"
+
+const OwnershipLabel string = "secrets.dhouti.dev/owned-by-controller"
 
 const DeletionFinalizer string = "secrets.dhouti.dev/garbageCollection"
 
@@ -102,7 +101,11 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	dt := obj.GetDeletionTimestamp()
 
-	finalizersDisabled, _ := strconv.ParseBool(os.Getenv("DISABLE_FINALIZERS"))
+	var finalizersDisabled bool
+	finalizersDisabledByEnv, _ := strconv.ParseBool(os.Getenv("DISABLE_FINALIZERS"))
+	if finalizersDisabledByEnv || obj.Spec.SkipFinalizers {
+		finalizersDisabled = true
+	}
 
 	// Add finalizer if not set and not currently being deleted
 	if dt.IsZero() && !controllerutil.ContainsFinalizer(obj, DeletionFinalizer) && !finalizersDisabled {
@@ -124,20 +127,27 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// Fetch the secret
+	// If ownership label not present on existing secret short circuit
 	fetchSecret := &corev1.Secret{}
+	err = r.Get(ctx, req.NamespacedName, fetchSecret)
+	secretNotFound := k8serrors.IsNotFound(err)
+	if err != nil && !secretNotFound {
+		return ctrl.Result{}, err
+	}
+	if !secretNotFound {
+		_, ok := fetchSecret.Labels[OwnershipLabel]
+		if !ok {
+			// The controller does not have the ownership label, exit
+			return ctrl.Result{}, nil
+		}
+	}
+
 	// Object is being deleted
 	if !dt.IsZero() {
 		if controllerutil.ContainsFinalizer(obj, DeletionFinalizer) {
-			// Check if corev1.secret exists
-			err = r.Get(ctx, req.NamespacedName, fetchSecret)
-			secretNotFound := k8serrors.IsNotFound(err)
-			if err != nil && !secretNotFound {
-				return ctrl.Result{Requeue: true}, err
-			}
-
-			// Delete the secret if it exists and skipFinalizer annotation is not applied
-			_, skipFinalizer := obj.Annotations[SkipFinalizerAnnotation]
-			if !secretNotFound && !skipFinalizer {
+			// Delete the secret if it exists and finalizers enabled
+			if !secretNotFound && !finalizersDisabled {
 				err = r.Delete(ctx, fetchSecret)
 				if err != nil {
 					return ctrl.Result{Requeue: true}, err
@@ -199,9 +209,8 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Add back ignored keys from live secret
-	ignoredSecretKeysRaw, ok := obj.ObjectMeta.Annotations[IgnoreKeysAnnotation]
-	if ok {
-		ignoredKeys := strings.Split(ignoredSecretKeysRaw, ",")
+	ignoredKeys := obj.Spec.IgnoredKeys
+	if len(ignoredKeys) > 0 {
 		for _, key := range ignoredKeys {
 			existingKey, ok := fetchSecret.Data[key]
 			if !ok {
@@ -220,6 +229,22 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	currentSecretChecksum = hashItem(secretDataBytes)
 
+	// Handle annotations from template
+	secretAnnotations := make(map[string]string)
+	if obj.Spec.Template.Annotations != nil {
+		secretAnnotations = obj.Spec.Template.Annotations
+	}
+	secretAnnotations[SecretChecksumAnotation] = currentSecretChecksum
+	secretAnnotations[SopsChecksumAnnotation] = currentSopsChecksum
+
+	// Handle labels from template
+	secretLabels := make(map[string]string)
+	if obj.Spec.Template.Labels != nil {
+		secretLabels = obj.Spec.Template.Labels
+	}
+	// Add ownership label
+	secretLabels[OwnershipLabel] = "true"
+
 	generatedSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      obj.Name,
@@ -228,25 +253,11 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, generatedSecret, func() error {
-		baseAnnotations := make(map[string]string)
-		if obj.Annotations != nil {
-			baseAnnotations = obj.Annotations
-		}
-
-		generatedSecret.Annotations = baseAnnotations
-		// This causes issues with argocd if not cleared.
-		delete(generatedSecret.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
-		generatedSecret.Annotations[SecretChecksumAnotation] = currentSecretChecksum
-		generatedSecret.Annotations[SopsChecksumAnnotation] = currentSopsChecksum
-
-		baseLabels := make(map[string]string)
-		if obj.Labels != nil {
-			baseLabels = obj.Labels
-		}
-		generatedSecret.Labels = baseLabels
-		generatedSecret.Data = generatedSecretData
-
+		generatedSecret.Annotations = secretAnnotations
+		generatedSecret.Labels = secretLabels
 		generatedSecret.Type = obj.Type
+
+		generatedSecret.Data = generatedSecretData
 		return nil
 	})
 
