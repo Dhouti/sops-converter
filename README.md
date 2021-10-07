@@ -1,5 +1,5 @@
 # sops-converter
-This is a fairly simple Kubebuilder project that utilizes Mozilla/Sops.
+This is a fairly simple Kubernetes controller that utilizes Mozilla/Sops.
 
 The goal is to be able to use Sops encryption with Kubernetes Secrets in git.
 
@@ -31,8 +31,6 @@ Flags:
 
 Use "sops-converter [command] --help" for more information about a command.
 ```
-
-## Usage-Example
 
 ### Convert
 Existing secret manifests can be converted to `SopsSecrets`
@@ -82,12 +80,13 @@ This controller is safe to uninstall if you follow a few steps first.
 This project does not use OwnerReferences as they would make this process much more difficult.
 
 Set the environment variable `DISABLE_FINALIZERS=true`.
-Once this finalizer is set, let the controller restart and finish reconciling all objects.
+Once this environment variable is set, let the controller restart and finish reconciling all objects.
 (tail the logs and wait for it to stop)
 
-Once this is done, check your SopsSecret objects. They should no long haver a finalizer set on them.
+Check your SopsSecret objects, they should no long haver a finalizer set on them.
 
-It is now safe to scale down the controller and delete the CRD. 
+Scale down the controller, this will prevent deletes just in case an object still somehow has a finalizer set.
+Delete the CRD, this should cause Kubernetes to garbage collect all SopsSecret objects in the cluster.
 All of the secrets created by the controller will remain.
 
 
@@ -151,7 +150,7 @@ spec:
 
 This controller uses an ownership label. If the label is not set on a secret the controller will not modify the secret.
 
-The value of the secret is `${Name}.${Namespace}` of the SopsScret object that created it.
+The value of the label is `${Name}.${Namespace}` of the SopsSecret object that created it.
 
 ```
 apiVersion: v1
