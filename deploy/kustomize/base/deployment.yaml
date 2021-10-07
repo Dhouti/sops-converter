@@ -1,14 +1,14 @@
-# This is a statefulset only because it prevents multiple replicas running at once
-# While also not having the needlessly complex (in this scenario) leader election.
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: sops-converter-controller
   namespace: sops-converter
   labels:
     control-plane: sops-converter-controller
 spec:
-  serviceName: sops-converter-controller
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       control-plane: sops-converter-controller
@@ -26,7 +26,7 @@ spec:
       - command:
         - /manager
         name: sops-converter-controller
-        image: ghcr.io/dhouti/sops-converter:v0.0.5
+        image: ghcr.io/dhouti/sops-converter:v0.0.7
         imagePullPolicy: Always
         resources:
           limits:
