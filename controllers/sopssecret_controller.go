@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -192,7 +193,7 @@ func (r *SopsSecretReconciler) ReconcileNamespace(ctx context.Context, log logr.
 	if !secretNotFound {
 		_, ok := fetchSecret.Labels[OwnershipLabel]
 		if !ok {
-			// The controller does not have the ownership label, exit
+			// The secret does not have the ownership label, exit
 			return ctrl.Result{}, nil
 		}
 	}
@@ -227,10 +228,32 @@ func (r *SopsSecretReconciler) ReconcileNamespace(ctx context.Context, log logr.
 	currentSecretChecksum := hashItem(secretDataBytes)
 	currentSopsChecksum := hashItem([]byte(obj.Data))
 
+	// Handle annotations from template
+	secretAnnotations := make(map[string]string)
+	if obj.Spec.Template.Annotations != nil {
+		secretAnnotations = obj.Spec.Template.Annotations
+	}
+	secretAnnotations[SecretChecksumAnotation] = currentSecretChecksum
+	secretAnnotations[SopsChecksumAnnotation] = currentSopsChecksum
+
+	// Handle labels from template
+	secretLabels := make(map[string]string)
+	if obj.Spec.Template.Labels != nil {
+		secretLabels = obj.Spec.Template.Labels
+	}
+
+	ownershipLabelValue := fmt.Sprintf("%s.%s", obj.Name, obj.Namespace)
+	secretLabels[OwnershipLabel] = string(ownershipLabelValue)
+
 	existingSecretChecksum, hasSecretChecksum := fetchSecret.Annotations[SecretChecksumAnotation]
 	existingSopsChecksum, hasSopsChecksum := fetchSecret.Annotations[SopsChecksumAnnotation]
-	if (hasSecretChecksum && hasSopsChecksum) && (existingSecretChecksum == currentSecretChecksum) && (existingSopsChecksum == currentSopsChecksum) {
-		log.Info("Checksums matched, skipping.")
+	if hasSecretChecksum && hasSopsChecksum &&
+		existingSecretChecksum == currentSecretChecksum &&
+		existingSopsChecksum == currentSopsChecksum &&
+		reflect.DeepEqual(fetchSecret.Annotations, secretAnnotations) &&
+		reflect.DeepEqual(fetchSecret.Labels, secretLabels) {
+		// That's one big if
+		log.Info("Objects matched, skipping.")
 		return ctrl.Result{}, nil
 	}
 
@@ -273,25 +296,8 @@ func (r *SopsSecretReconciler) ReconcileNamespace(ctx context.Context, log logr.
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-
 	currentSecretChecksum = hashItem(secretDataBytes)
-
-	// Handle annotations from template
-	secretAnnotations := make(map[string]string)
-	if obj.Spec.Template.Annotations != nil {
-		secretAnnotations = obj.Spec.Template.Annotations
-	}
 	secretAnnotations[SecretChecksumAnotation] = currentSecretChecksum
-	secretAnnotations[SopsChecksumAnnotation] = currentSopsChecksum
-
-	// Handle labels from template
-	secretLabels := make(map[string]string)
-	if obj.Spec.Template.Labels != nil {
-		secretLabels = obj.Spec.Template.Labels
-	}
-
-	ownershipLabelValue := fmt.Sprintf("%s.%s", obj.Name, obj.Namespace)
-	secretLabels[OwnershipLabel] = string(ownershipLabelValue)
 
 	generatedSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
