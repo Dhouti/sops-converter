@@ -161,9 +161,18 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	targetName := obj.Name
+	if obj.Spec.Template.Name != "" {
+		targetName = obj.Spec.Template.Name
+	}
+
 	var requeue bool
 	for _, targetNamespace := range obj.Spec.Template.Namespaces {
-		res, err := r.ReconcileNamespace(ctx, log, finalizersDisabled, obj, targetNamespace)
+		secretDestination := types.NamespacedName{
+			Name:      targetName,
+			Namespace: targetNamespace,
+		}
+		res, err := r.ReconcileNamespace(ctx, log, finalizersDisabled, obj, secretDestination)
 		if res.Requeue {
 			requeue = true
 		}
@@ -177,15 +186,11 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{Requeue: requeue}, err
 }
 
-func (r *SopsSecretReconciler) ReconcileNamespace(ctx context.Context, log logr.Logger, finalizersDisabled bool, obj *secretsv1beta1.SopsSecret, targetNamespace string) (ctrl.Result, error) {
-	targetSecret := types.NamespacedName{
-		Name:      obj.Name,
-		Namespace: targetNamespace,
-	}
+func (r *SopsSecretReconciler) ReconcileNamespace(ctx context.Context, log logr.Logger, finalizersDisabled bool, obj *secretsv1beta1.SopsSecret, secretDestination types.NamespacedName) (ctrl.Result, error) {
 	// Fetch the secret
 	// If ownership label not present on existing secret short circuit
 	fetchSecret := &corev1.Secret{}
-	err := r.Get(ctx, targetSecret, fetchSecret)
+	err := r.Get(ctx, secretDestination, fetchSecret)
 	secretNotFound := k8serrors.IsNotFound(err)
 	if err != nil && !secretNotFound {
 		return ctrl.Result{}, err
@@ -301,8 +306,8 @@ func (r *SopsSecretReconciler) ReconcileNamespace(ctx context.Context, log logr.
 
 	generatedSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      obj.Name,
-			Namespace: targetNamespace,
+			Name:      secretDestination.Name,
+			Namespace: secretDestination.Namespace,
 		},
 	}
 
