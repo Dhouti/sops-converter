@@ -19,6 +19,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -52,30 +53,59 @@ var editCmd = &cobra.Command{
 			return err
 		}
 
-		// Store the original yaml
+		var allDocuments []yaml.MapSlice
+		// Parse out multiple objects
 		var originalYaml yaml.MapSlice
-		err = yaml.Unmarshal(targetFile, &originalYaml)
-		if err != nil {
-			return err
+		decoder := yaml.NewDecoder(bytes.NewReader(targetFile))
+		for decoder.Decode(&originalYaml) == nil {
+			allDocuments = append(allDocuments, originalYaml)
 		}
 
-		// Convert manifest to runtime.Object to see if it's a SopsSecret
-		m, _, err := scheme.Codecs.UniversalDeserializer().Decode(targetFile, nil, nil)
-		if err != nil {
-			return err
+		allObjects := map[int]*secretsv1beta1.SopsSecret{}
+		for index, document := range allDocuments {
+			// Convert back to yaml to parse again.
+			documentBytes, err := yaml.Marshal(document)
+			if err != nil {
+				return err
+			}
+
+			// Convert manifest to runtime.Object to see if it's a SopsSecret
+			m, _, err := scheme.Codecs.UniversalDeserializer().Decode(documentBytes, nil, nil)
+			if err != nil {
+				continue
+			}
+
+			// Assert that object is SopsSecret, if not exit
+			sopsSecret, ok := m.(*secretsv1beta1.SopsSecret)
+			if !ok {
+				// Not a SopsSecret, skip
+				continue
+			}
+			allObjects[index] = sopsSecret
 		}
 
-		// Assert that object is SopsSecret, if not exit
-		sopsSecret, ok := m.(*secretsv1beta1.SopsSecret)
-		if !ok {
-			return errors.New("file is not a sopssecret")
+		if len(allObjects) == 0 {
+			return errors.New("no SopsSecret objects found")
 		}
+
+		var targetIndex int
+		if len(allObjects) > 1 {
+			fmt.Printf("Found %v SopsSecret objects:\n", len(allObjects))
+			fmt.Println("[index] name/namespace")
+			for index, obj := range allObjects {
+				fmt.Printf("[%v]: %s/%s\n", index, obj.Name, obj.Namespace)
+			}
+			fmt.Println("Enter the index of the SopsSecret you'd like to edit: ")
+			fmt.Scanln(&targetIndex)
+		}
+		targetYamlMap := allDocuments[targetIndex]
 
 		// Open a temporary file.
 		tmpfile, err := ioutil.TempFile("", ".*.yml")
 		if err != nil {
 			return err
 		}
+		sopsSecret := allObjects[targetIndex]
 
 		defer tmpfile.Close()
 		defer os.Remove(tmpfile.Name())
@@ -104,21 +134,30 @@ var editCmd = &cobra.Command{
 		}
 
 		// Using yaml.MapSlice to preserve key order.
-		for index, item := range originalYaml {
+		for index, item := range targetYamlMap {
 			keyString, ok := item.Key.(string)
 			if ok && keyString == "data" {
 				item.Value = string(tmpfileContents)
-				originalYaml[index] = item
+				targetYamlMap[index] = item
 				break
 			}
 		}
 
-		out, err := yaml.Marshal(originalYaml)
-		if err != nil {
-			return err
+		allDocuments[targetIndex] = targetYamlMap
+		var outBuffer bytes.Buffer
+		for _, document := range allDocuments {
+			if document == nil {
+				continue
+			}
+			out, err := yaml.Marshal(document)
+			if err != nil {
+				return err
+			}
+			outBuffer.Write(out)
+			outBuffer.Write([]byte("---\n"))
 		}
 
-		err = ioutil.WriteFile(args[0], out, finfo.Mode())
+		err = ioutil.WriteFile(args[0], outBuffer.Bytes(), finfo.Mode())
 		if err != nil {
 			return err
 		}
