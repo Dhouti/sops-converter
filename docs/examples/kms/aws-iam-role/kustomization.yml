@@ -1,0 +1,7 @@
+resources:
+# Change the ref to the latest release
+- github.com/Dhouti/sops-converter/deploy/kustomize/base?ref=v0.0.8
+- namespace.yml
+
+patches:
+- service-account-patch.yml

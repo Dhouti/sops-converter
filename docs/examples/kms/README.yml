@@ -1,0 +1,20 @@
+Permissions required for AWS KMS on the controller side can be as simple as:
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt"
+            ],
+            "Resource": "YOUR_KSM_KEY_ARN"
+        }
+    ]
+}
+```
+
+Anyone editing encrypted secrets will also need `kms:Encrypt` on for the relevant KMS keys.
+
+
+There are multiple options for adding the necessary AWS permissions to the controller.
