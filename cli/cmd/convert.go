@@ -22,21 +22,16 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"text/template"
 
-	"github.com/Masterminds/sprig"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v2"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/yaml"
 
 	secretsv1beta1 "github.com/dhouti/sops-converter/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
-
-	_ "embed"
 )
-
-//go:embed templates/sopssecret.yml
-var sopsSecretTemplate string
 
 // convertCmd represents the convert command
 var convertCmd = &cobra.Command{
@@ -57,14 +52,7 @@ var convertCmd = &cobra.Command{
 			return err
 		}
 
-		// Store the original yaml
-		var originalYaml yaml.MapSlice
-		err = yaml.Unmarshal(targetFile, &originalYaml)
-		if err != nil {
-			return err
-		}
-
-		// Convert manifest to runtime.Object to see if it's a SopsSecret
+		// Convert manifest to runtime.Object to see if it's a secret
 		m, _, err := scheme.Codecs.UniversalDeserializer().Decode(targetFile, nil, nil)
 		if err != nil {
 			return err
@@ -117,14 +105,19 @@ var convertCmd = &cobra.Command{
 		generatedSopsSecret := &secretsv1beta1.SopsSecret{}
 		generatedSopsSecret.Type = secret.Type
 		generatedSopsSecret.ObjectMeta = secret.ObjectMeta
+		generatedSopsSecret.Spec.Template.Annotations = secret.ObjectMeta.Annotations
+		generatedSopsSecret.Spec.Template.Labels = secret.ObjectMeta.Labels
 		generatedSopsSecret.Data = sopsStdout.String()
 
-		tmpl, err := template.New("sopssecret").Funcs(sprig.TxtFuncMap()).Parse(sopsSecretTemplate)
-		if err != nil {
-			return err
+		// Set the GVK or YAMLPrinter doesn't work
+		gvk := schema.GroupVersionKind{
+			Group:   "secrets.dhouti.dev",
+			Version: "v1beta1",
+			Kind:    "SopsSecret",
 		}
-
-		err = tmpl.Execute(os.Stdout, *generatedSopsSecret)
+		generatedSopsSecret.GetObjectKind().SetGroupVersionKind(gvk)
+		yamlPrinter := printers.YAMLPrinter{}
+		err = yamlPrinter.PrintObj(generatedSopsSecret, os.Stdout)
 		if err != nil {
 			return err
 		}
