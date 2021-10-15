@@ -1,7 +1,6 @@
 # sops-converter
 The goal of this project is to be able to use Sops encryption with Kubernetes Secrets so they can be stored safely in Git.
 
-
 # Controller
 The controller is fairly simple, it decrypts the `data` field of `SopsSecret` objects and inserts it into a `v1/Secret` object with the corresponding `name` and `namespace`.
 
@@ -22,12 +21,13 @@ Examples of deployments with Kustomize can be found in `docs/examples`
 This controller is safe to uninstall if you follow a few steps first.
 
 Set the environment variable `DISABLE_FINALIZERS=true`.
-Once this finalizer is set, let the controller restart and finish reconciling all objects.
+Once this environment variable is set, let the controller restart and finish reconciling all objects.
 (tail the logs and wait for it to stop)
 
-Once this is done, check your SopsSecret objects. They should no long haver a finalizer set on them.
+Check your SopsSecret objects, they should no long haver a finalizer set on them.
 
-It is now safe to scale down the controller and delete the CRD. 
+Scale down the controller, this will prevent deletes just in case an object still somehow has a finalizer set.
+Delete the CRD, this should cause Kubernetes to garbage collect all SopsSecret objects in the cluster.
 All of the secrets created by the controller will remain.
 
 There was a concious decision to not use OwnerReferences as they would make this process more difficult and are in general less safe for something as critical as Secrets.
@@ -104,4 +104,3 @@ spec:
   - tls.crt
   - tls.key
   - server.secretKey
-```
